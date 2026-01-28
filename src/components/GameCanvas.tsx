@@ -79,19 +79,18 @@ export function GameCanvas({ world, agents, onSelectAgent, time }: GameCanvasPro
                 ctx.fillStyle = getTileColor(tile);
                 ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
 
-                // Grid lines (optional)
-                ctx.strokeStyle = '#rgba(0,0,0,0.1)';
-                ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
             }
         }
 
         // Draw Locations (overlay names)
         world.locations.forEach(loc => {
-            // Simple label at entry
-            ctx.fillStyle = 'white';
-            ctx.font = '10px sans-serif';
-            // Check if name fits, maybe draw building center
-            ctx.fillText(loc.name, loc.entry.x * TILE_SIZE, loc.entry.y * TILE_SIZE);
+            // Label at entry
+            ctx.fillStyle = '#1e293b'; // slate-800 for better visibility
+            ctx.font = 'bold 14px "Microsoft YaHei", "SimHei", sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            // Adjusted position to be slightly above the entry point
+            ctx.fillText(loc.name, loc.entry.x * TILE_SIZE + TILE_SIZE / 2, loc.entry.y * TILE_SIZE - 2);
         });
 
         // Draw Agents

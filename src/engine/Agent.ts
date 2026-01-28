@@ -32,7 +32,7 @@ export class Agent {
         this.emoji = emoji;
     }
 
-    update(world: World) {
+    update(world: World, agents: Agent[]) {
         if (this.conversationTTL > 0) {
             this.conversationTTL--;
             if (this.conversationTTL <= 0) {
@@ -42,7 +42,7 @@ export class Agent {
         }
 
         if (this.state === 'MOVING') {
-            this.move();
+            this.move(agents);
         }
         // Other state logic handled by BehaviorSystem
     }
@@ -60,12 +60,25 @@ export class Agent {
         }
     }
 
-    move() {
+    move(agents: Agent[]) {
         if (this.path.length > 0) {
-            const nextStep = this.path.shift();
-            if (nextStep) {
-                this.position = nextStep;
+            const nextStep = this.path[0];
+
+            // Collision detection: Check if any other agent is at nextStep
+            const isOccupied = agents.some(other =>
+                other.id !== this.id &&
+                other.position.x === nextStep.x &&
+                other.position.y === nextStep.y
+            );
+
+            if (isOccupied) {
+                // Wait until it's clear
+                return;
             }
+
+            // Move to next step
+            this.path.shift();
+            this.position = nextStep;
         } else {
             this.state = 'IDLE';
             this.targetPosition = null;

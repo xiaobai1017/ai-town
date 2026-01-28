@@ -1,36 +1,61 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Town Simulation
+
+An interactive virtual town simulation powered by local Large Language Models (LLMs). Agents with unique roles and personalities live, work, and converse with each other based on a simulated daily cycle.
+
+## Features
+
+- **Autonomous Agents**: Characters like Bakers and Librarians follow daily routines (working, sleeping, wandering).
+- **Interactive Dialogue**: Agents engage in conversations when they are in close proximity, using LLM-generated speech.
+- **Dynamic World**: A grid-based map with locations (Bakery, Library, Park, etc.) and real-time pathfinding.
+- **Visual Interface**: A high-performance HTML5 Canvas rendering engine for smooth gameplay and state visualization.
+
+## Architecture
+
+- **Engine**: Handles the grid system, pathfinding, and agent state management.
+- **Behavior System**: Manages time-based decision making for all agents.
+- **Dialogue System**: Coordinates LLM-driven interactions between characters.
+- **Frontend**: Built with Next.js and React for a modern, responsive experience.
+
+## LLM Configuration
+
+This project relies on **Ollama** to serve local Large Language Models for agent dialogue.
+
+### 1. Install Ollama
+Download and install Ollama from [ollama.com](https://ollama.com/).
+
+### 2. Download the Model
+The simulation is currently optimized for **Qwen3 (0.6B)**. Run the following command in your terminal:
+
+```bash
+ollama run qwen3:0.6b
+```
+
+### 3. API Access
+The application expects Ollama to be running on its default local endpoint: `http://localhost:11434`.
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+- Node.js 18.x or later
+- Ollama (running qwen3:0.6b)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### Installation
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+2. Start the development server:
+   ```bash
+   npm run dev
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+3. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## Learn More
+## Tech Stack
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Framework**: Next.js 15+ (App Router)
+- **Language**: TypeScript
+- **State/Rendering**: React Hooks + HTML5 Canvas
+- **AI Core**: Ollama (Qwen3:0.6b)

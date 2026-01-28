@@ -1,6 +1,7 @@
 
 import { Agent } from '../engine/Agent';
 import { generateResponse } from '@/lib/llm';
+import { LLM_MODEL } from '@/lib/config';
 
 export interface DialoguePacket {
     speaker: string;
@@ -51,11 +52,11 @@ export class DialogueSystem {
 
         try {
             const promptA = `You are ${a.name}, a ${a.role}. You meet ${b.name}, a ${b.role}. Say something short (max 10 words) to them.`;
-            const textA_Final = await generateResponse('qwen3:4b', promptA);
+            const textA_Final = await generateResponse(LLM_MODEL, promptA);
             console.log('Agent A said:', textA_Final);
 
             const promptB = `You are ${b.name}, a ${b.role}. ${a.name} just said: "${textA_Final}". meaningful reply (max 10 words).`;
-            const textB_Final = await generateResponse('qwen3:4b', promptB);
+            const textB_Final = await generateResponse(LLM_MODEL, promptB);
             console.log('Agent B said:', textB_Final);
 
             this.dialogueLog.push({

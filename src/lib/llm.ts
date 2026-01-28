@@ -1,12 +1,14 @@
+import { LLM_ENDPOINT, LLM_API_KEY } from './config';
 
 export async function generateResponse(model: string, prompt: string): Promise<string> {
     try {
         await logToServer(`LLM Request [${model}]: ${prompt}`);
 
-        const response = await fetch('http://localhost:11434/api/generate', {
+        const response = await fetch(LLM_ENDPOINT, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
+                ...(LLM_API_KEY ? { 'Authorization': `Bearer ${LLM_API_KEY}` } : {}),
             },
             body: JSON.stringify({
                 model: model,

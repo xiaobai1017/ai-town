@@ -9,6 +9,9 @@ export type TileType = 'grass' | 'road' | 'wall' | 'floor';
 export interface Location {
   name: string;
   entry: Coordinate;
+  interior?: Coordinate;
+  width?: number;
+  height?: number;
   type: 'residential' | 'commercial' | 'public';
 }
 
@@ -46,7 +49,7 @@ export class World {
     // Add Park (Just an area)
     this.locations.push({
       name: 'Park',
-      entry: { x: 15, y: 15 },
+      entry: { x: 25, y: 15 },
       type: 'public'
     });
   }
@@ -65,7 +68,10 @@ export class World {
     this.grid[y + h - 1][x + Math.floor(w / 2)] = 'floor';
     this.locations.push({
       name,
-      entry: { x: x + Math.floor(w / 2), y: y + h },
+      entry: { x: x + Math.floor(w / 2), y: y + h - 1 }, // On the door tile
+      interior: { x: x + Math.floor(w / 2), y: y + Math.floor(h / 2) }, // Center of building
+      width: w,
+      height: h,
       type: 'public' // simplified
     });
   }
@@ -95,6 +101,12 @@ export class World {
         { x: -1, y: 0 }, // Left
         { x: 1, y: 0 },  // Right
       ];
+
+      // Shuffle directions to make paths less predictable
+      for (let i = directions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [directions[i], directions[j]] = [directions[j], directions[i]];
+      }
 
       for (const dir of directions) {
         const nextX = pos.x + dir.x;

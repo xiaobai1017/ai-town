@@ -26,7 +26,7 @@ export function useGameLoop() {
     const stateRef = useRef<GameState>(gameState);
     const behaviorSystemRef = useRef<BehaviorSystem | null>(null);
     const dialogueSystemRef = useRef<DialogueSystem | null>(null);
-    const requestRef = useRef<number>();
+    const requestRef = useRef<number>(undefined);
     const lastTimeRef = useRef<number>(0);
 
     // Speed factor: 1 real second = X game minutes
@@ -80,7 +80,7 @@ export function useGameLoop() {
             }
 
             // Update Agents (Movement)
-            currentState.agents.forEach(agent => agent.update(world));
+            currentState.agents.forEach(agent => agent.update(world, currentState.agents));
 
             // Update Dialogue
             if (dialogueSystemRef.current) {
