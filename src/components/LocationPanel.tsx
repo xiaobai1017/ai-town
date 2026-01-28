@@ -101,10 +101,6 @@ export function LocationPanel({ location, onClose }: LocationPanelProps) {
 
                 <div className="pt-4 border-t border-slate-100">
                     <div className="text-[10px] text-slate-400 font-bold uppercase mb-2">Location Info</div>
-                    <div className="flex justify-between text-sm">
-                        <span className="text-slate-500">Coordinates</span>
-                        <span className="font-mono text-slate-700">({location.x}, {location.y})</span>
-                    </div>
                     <div className="flex justify-between text-sm mt-1">
                         <span className="text-slate-500">Type</span>
                         <span className="capitalize font-medium text-slate-700">{location.type}</span>

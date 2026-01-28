@@ -1,6 +1,6 @@
 import { Coordinate, World } from './World';
 
-export type AgentState = 'IDLE' | 'MOVING' | 'WORKING' | 'TALKING' | 'SLEEPING' | 'CRIMINAL' | 'ARRESTED' | 'EATING' | 'BANKING' | 'TREATING' | 'DEAD';
+export type AgentState = 'IDLE' | 'MOVING' | 'WORKING' | 'TALKING' | 'SLEEPING' | 'CRIMINAL' | 'ARRESTED' | 'EATING' | 'BANKING' | 'TREATING' | 'SHOPPING' | 'DEAD';
 
 export interface AgentMemory {
     lastConversion?: { with: string, topic: string, time: number };
@@ -42,6 +42,7 @@ export class Agent {
     blockedTicks: number = 0; // Tracking how long we have been stuck
     transactions: Transaction[] = []; // Financial history
     sessionFinance?: { amount: number, description: string, type: 'income' | 'expense' | 'bank' | 'loan' };
+    sessionLoan?: number; // Aggregating loan repayments during work
     deathCause?: string;
     deathTime?: number;
     livingTicks: number = 0;
@@ -137,8 +138,8 @@ export class Agent {
 
     logTransaction(amount: number, description: string, type: 'income' | 'expense' | 'bank' | 'loan', timestamp: number) {
         this.transactions.unshift({ amount, description, type, timestamp });
-        // Keep only last 50 transactions to save memory
-        if (this.transactions.length > 50) {
+        // Keep only last 100 transactions to save memory
+        if (this.transactions.length > 100) {
             this.transactions.pop();
         }
     }

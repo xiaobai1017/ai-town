@@ -132,12 +132,13 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
             ctx.font = '10px sans-serif';
             ctx.fillText(agent.name, ax + TILE_SIZE / 2, ay - 5);
 
-            if (agent.conversation && agent.state === 'TALKING') {
-                const otherAgent = agents.find(a =>
+            if (agent.conversation) {
+                const otherAgent = agent.state === 'TALKING' ? agents.find(a =>
                     a.id !== agent.id &&
                     a.state === 'TALKING' &&
                     Math.abs(a.position.x - agent.position.x) + Math.abs(a.position.y - agent.position.y) <= 2
-                );
+                ) : null;
+
                 const displayText = otherAgent ? `${agent.name} ➡️ ${otherAgent.name}: ${agent.conversation}` : agent.conversation;
                 drawBubble(ctx, ax + TILE_SIZE / 2, ay - 10, displayText);
             }

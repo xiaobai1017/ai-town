@@ -19,7 +19,7 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
         .slice(0, 3); // Top 3 friends
 
     return (
-        <div className="fixed right-4 top-20 w-80 bg-white p-4 rounded-lg shadow-xl border border-slate-200 max-h-[80vh] overflow-y-auto">
+        <div className="fixed right-4 top-20 w-80 bg-white p-4 rounded-lg shadow-xl border border-slate-200 max-h-[80vh] overflow-y-auto z-[60]">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold flex items-center gap-2">
                     <span className="text-2xl">{agent.emoji}</span> {agent.name}
@@ -47,8 +47,8 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                         )}
                     </div>
                     <div>
-                        <span className="font-semibold text-slate-500 text-sm">Location</span>
-                        <p className="text-md">({agent.position.x}, {agent.position.y})</p>
+                        <span className="font-semibold text-slate-500 text-sm">Survived</span>
+                        <p className="text-md font-mono">{(agent.livingTicks / 60).toFixed(1)} hrs</p>
                     </div>
                 </div>
 

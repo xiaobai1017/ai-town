@@ -10,10 +10,10 @@ import { LocationPanel } from "@/components/LocationPanel";
 import { useState } from "react";
 import { Agent } from "@/engine/Agent";
 import { Location as TownLocation } from "@/engine/World";
-import { Play, Pause, FastForward, User, Plus, Minus, Skull } from "lucide-react";
+import { Play, Pause, FastForward, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert } from "lucide-react";
 
 export default function Home() {
-  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent } = useGameLoop();
+  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel } = useGameLoop();
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<TownLocation | null>(null);
   const [historyPair, setHistoryPair] = useState<[Agent, Agent] | null>(null);
@@ -85,6 +85,44 @@ export default function Home() {
               >
                 <Plus size={16} />
               </button>
+            </div>
+          </div>
+
+          <div className="ml-4 flex items-center gap-4 bg-slate-100 p-1 rounded-lg">
+            <div className="flex items-center gap-2 px-2 border-r border-slate-200">
+              <Banknote size={16} className="text-emerald-600" />
+              <div className="flex flex-col leading-tight">
+                <span className="text-[10px] text-slate-500 uppercase font-bold">Wages</span>
+                <span className="text-xs font-black text-slate-700">{gameState.wageLevel.toFixed(1)}x</span>
+              </div>
+              <div className="flex flex-col ml-1">
+                <button onClick={() => setWageLevel(Math.min(5, gameState.wageLevel + 0.1))} className="hover:text-emerald-600 p-0.5"><Plus size={10} /></button>
+                <button onClick={() => setWageLevel(Math.max(0.1, gameState.wageLevel - 0.1))} className="hover:text-rose-600 p-0.5"><Minus size={10} /></button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 px-2 border-r border-slate-200">
+              <Coins size={16} className="text-amber-600" />
+              <div className="flex flex-col leading-tight">
+                <span className="text-[10px] text-slate-500 uppercase font-bold">Prices</span>
+                <span className="text-xs font-black text-slate-700">{gameState.priceLevel.toFixed(1)}x</span>
+              </div>
+              <div className="flex flex-col ml-1">
+                <button onClick={() => setPriceLevel(Math.min(5, gameState.priceLevel + 0.1))} className="hover:text-amber-600 p-0.5"><Plus size={10} /></button>
+                <button onClick={() => setPriceLevel(Math.max(0.1, gameState.priceLevel - 0.1))} className="hover:text-rose-600 p-0.5"><Minus size={10} /></button>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 px-2">
+              <ShieldAlert size={16} className="text-indigo-600" />
+              <div className="flex flex-col leading-tight">
+                <span className="text-[10px] text-slate-500 uppercase font-bold">Accident Risk</span>
+                <span className="text-xs font-black text-slate-700">{gameState.riskLevel.toFixed(1)}x</span>
+              </div>
+              <div className="flex flex-col ml-1">
+                <button onClick={() => setRiskLevel(Math.min(10, gameState.riskLevel + 0.5))} className="hover:text-indigo-600 p-0.5"><Plus size={10} /></button>
+                <button onClick={() => setRiskLevel(Math.max(0, gameState.riskLevel - 0.5))} className="hover:text-rose-600 p-0.5"><Minus size={10} /></button>
+              </div>
             </div>
           </div>
         </div>
@@ -166,11 +204,15 @@ export default function Home() {
               <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 sticky top-0 bg-slate-900/90 py-1 backdrop-blur-sm border-b border-slate-800">Final Census</h3>
               <div className="space-y-3">
                 {gameState.agents.map((a) => (
-                  <div key={a.id} className="flex justify-between items-center gap-4 text-sm border-b border-slate-800/50 pb-2 last:border-0 last:pb-0">
+                  <div
+                    key={a.id}
+                    onClick={() => setSelectedAgent(a)}
+                    className="flex justify-between items-center gap-4 text-sm border-b border-slate-800/50 pb-2 last:border-0 last:pb-0 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors group"
+                  >
                     <div className="flex items-center gap-3">
-                      <span className="text-xl">{a.emoji}</span>
+                      <span className="text-xl group-hover:scale-110 transition-transform">{a.emoji}</span>
                       <div>
-                        <p className="font-bold text-slate-200 leading-none">{a.name}</p>
+                        <p className="font-bold text-slate-200 leading-none group-hover:text-white">{a.name}</p>
                         <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold">{a.role}</p>
                       </div>
                     </div>

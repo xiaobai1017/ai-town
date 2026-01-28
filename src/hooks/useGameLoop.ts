@@ -12,6 +12,9 @@ export interface GameState {
     time: number; // in minutes
     isRunning: boolean;
     dialogueLog: DialoguePacket[];
+    priceLevel: number;
+    wageLevel: number;
+    riskLevel: number;
 }
 
 export function useGameLoop() {
@@ -20,7 +23,10 @@ export function useGameLoop() {
         agents: [],
         time: 480, // Start at 8:00 AM
         isRunning: false,
-        dialogueLog: []
+        dialogueLog: [],
+        priceLevel: 1.0,
+        wageLevel: 1.0,
+        riskLevel: 1.0
     });
 
     const stateRef = useRef<GameState>(gameState);
@@ -43,7 +49,10 @@ export function useGameLoop() {
             agents,
             time: 480,
             isRunning: false,
-            dialogueLog: []
+            dialogueLog: [],
+            priceLevel: 1.0,
+            wageLevel: 1.0,
+            riskLevel: 1.0
         };
 
         setGameState(initialState);
@@ -76,6 +85,7 @@ export function useGameLoop() {
 
             // Update AI
             if (behaviorSystemRef.current) {
+                behaviorSystemRef.current.setEconomicLevels(currentState.priceLevel, currentState.wageLevel, currentState.riskLevel);
                 behaviorSystemRef.current.update(currentState.agents, newTime);
             }
 
@@ -177,12 +187,30 @@ export function useGameLoop() {
         }
     };
 
+    const setPriceLevel = (val: number) => {
+        stateRef.current.priceLevel = val;
+        setGameState(prev => ({ ...prev, priceLevel: val }));
+    };
+
+    const setWageLevel = (val: number) => {
+        stateRef.current.wageLevel = val;
+        setGameState(prev => ({ ...prev, wageLevel: val }));
+    };
+
+    const setRiskLevel = (val: number) => {
+        stateRef.current.riskLevel = val;
+        setGameState(prev => ({ ...prev, riskLevel: val }));
+    };
+
     return {
         gameState,
         togglePause,
         setSpeed,
         speed,
         addAgent,
-        removeAgent
+        removeAgent,
+        setPriceLevel,
+        setWageLevel,
+        setRiskLevel
     };
 }

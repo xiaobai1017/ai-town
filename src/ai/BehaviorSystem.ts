@@ -4,9 +4,18 @@ import { World, Location } from '../engine/World';
 
 export class BehaviorSystem {
     world: World;
+    priceMultiplier: number = 1.0;
+    wageMultiplier: number = 1.0;
+    riskMultiplier: number = 1.0; // Control probability of accidents/illness
 
     constructor(world: World) {
         this.world = world;
+    }
+
+    setEconomicLevels(price: number, wage: number, risk: number) {
+        this.priceMultiplier = price;
+        this.wageMultiplier = wage;
+        this.riskMultiplier = risk;
     }
 
     update(agents: Agent[], time: number) {
@@ -49,36 +58,51 @@ export class BehaviorSystem {
 
             // Earn money if working
             if (agent.state === 'WORKING') {
-                let income = this.getIncome(agent);
+                const grossIncome = this.getIncome(agent);
+                let actualIncome = grossIncome;
+
                 // Loan repayment: 20% of income goes to repaying the loan
                 if (agent.loanBalance > 0) {
-                    const repayment = Math.min(agent.loanBalance, income * 0.2);
+                    const repayment = Math.min(agent.loanBalance, grossIncome * 0.2);
                     agent.loanBalance -= repayment;
-                    income -= repayment;
-                    agent.logTransaction(repayment, "Auto-loan repayment", 'loan', time);
-                    // Log to bank if possible (though bank revenue doesn't increase from loan repayment usually, but let's track)
+                    actualIncome -= repayment;
+                    agent.sessionLoan = (agent.sessionLoan || 0) + repayment;
+
+                    // Log to bank building immediately for its revenue tracker (if you want real-time bank stats)
                     const bank = this.world.locations.find(l => l.name === 'Bank');
-                    if (bank) this.logBuildingTransaction(bank, repayment, `Loan repayment from ${agent.name}`, time);
+                    if (bank) {
+                        bank.stats.revenue += repayment;
+                    }
                 }
-                agent.cash += income;
+                agent.cash += actualIncome;
 
                 if (!agent.sessionFinance || agent.sessionFinance.type !== 'income') {
                     agent.sessionFinance = { amount: 0, description: `Work (${agent.role})`, type: 'income' };
                 }
-                agent.sessionFinance.amount += income;
-            } else if (agent.sessionFinance && agent.sessionFinance.type === 'income') {
-                agent.logTransaction(agent.sessionFinance.amount, agent.sessionFinance.description, 'income', time);
-                agent.sessionFinance = undefined;
+                agent.sessionFinance.amount += grossIncome; // Store gross income in session
+            } else {
+                // End of Work session logging
+                if (agent.sessionFinance && agent.sessionFinance.type === 'income') {
+                    agent.logTransaction(agent.sessionFinance.amount, agent.sessionFinance.description, 'income', time);
+                    agent.sessionFinance = undefined;
+
+                    if (agent.sessionLoan && agent.sessionLoan > 0) {
+                        agent.logTransaction(agent.sessionLoan, "Loan repayment (Automatic)", 'loan', time);
+                        const bank = this.world.locations.find(l => l.name === 'Bank');
+                        if (bank) this.logBuildingTransaction(bank, agent.sessionLoan, `Loan repayment from ${agent.name}`, time);
+                        agent.sessionLoan = 0;
+                    }
+                }
             }
 
             // Hunger logic: increases over time, decreases when eating
             if (agent.state === 'EATING') {
-                agent.hunger = Math.max(0, agent.hunger - 5.0);
+                agent.hunger = Math.max(0, agent.hunger - 6.0); // Faster recovery
                 agent.health = Math.min(100, agent.health + 0.2); // Recover health while eating
 
-                let cost = 0.05; // Default: Restaurant
-                if (locAt?.name === 'Bakery') cost = 0.03;
-                if (locAt?.name === 'My House') cost = 0.01;
+                let cost = 0.05 * this.priceMultiplier; // Default: Restaurant
+                if (locAt?.name === 'Bakery') cost = 0.03 * this.priceMultiplier;
+                if (locAt?.name === 'My House') cost = 0.01 * this.priceMultiplier;
 
                 let hasPaid = false;
                 if (agent.cash >= cost) {
@@ -87,9 +111,6 @@ export class BehaviorSystem {
                 } else if (agent.bankBalance >= cost) {
                     agent.bankBalance -= cost;
                     hasPaid = true;
-                    if (time % 10 === 0) { // Log occasionally to not spam
-                        agent.logTransaction(-cost, `Direct bank payment for food at ${locAt?.name || 'Local'}`, 'bank', time);
-                    }
                 }
 
                 if (hasPaid) {
@@ -106,9 +127,16 @@ export class BehaviorSystem {
                 }
 
                 if (agent.cash < cost && agent.bankBalance < cost) {
-                    agent.state = 'IDLE';
-                    agent.conversation = "I'm completely broke and starving!";
-                    agent.conversationTTL = 50;
+                    // Fallback logic: If too broke for here, try a cheaper place
+                    if (locAt?.name === 'Restaurant' || locAt?.name === 'Bakery') {
+                        agent.state = 'IDLE'; // Force re-decision in decideAction
+                        agent.conversation = "Too expensive here! I need something cheaper.";
+                        agent.conversationTTL = 30;
+                    } else {
+                        agent.state = 'IDLE';
+                        agent.conversation = "I'm completely broke and starving!";
+                        agent.conversationTTL = 50;
+                    }
                 } else if (agent.hunger === 0) {
                     agent.state = 'IDLE';
                     agent.conversation = "I'm full!";
@@ -131,6 +159,52 @@ export class BehaviorSystem {
                 agent.hunger = Math.min(100, agent.hunger + 0.05);
             }
 
+            // Shopping logic: High-end consumption at the Mall
+            if (agent.state === 'SHOPPING') {
+                const luxuryCost = 0.5 * this.priceMultiplier;
+                let hasPaid = false;
+                if (agent.cash >= luxuryCost) {
+                    agent.cash -= luxuryCost;
+                    hasPaid = true;
+                } else if (agent.bankBalance >= luxuryCost) {
+                    agent.bankBalance -= luxuryCost;
+                    hasPaid = true;
+                }
+
+                if (hasPaid) {
+                    agent.health = Math.min(100, agent.health + 0.5); // Luxury care
+                    if (locAt) {
+                        locAt.stats.revenue += luxuryCost;
+                        if (!locAt.stats.sessionRevenue) locAt.stats.sessionRevenue = {};
+                        locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + luxuryCost;
+                    }
+                    if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || agent.sessionFinance.description !== 'Luxury Shopping') {
+                        agent.sessionFinance = { amount: 0, description: 'Luxury Shopping', type: 'expense' };
+                    }
+                    agent.sessionFinance.amount -= luxuryCost;
+
+                    if (Math.random() < 0.05) {
+                        agent.state = 'IDLE';
+                        agent.conversation = "That was a great shopping trip!";
+                        agent.conversationTTL = 50;
+                    }
+                } else {
+                    agent.state = 'IDLE';
+                    agent.conversation = "Too expensive! I'm out of here.";
+                    agent.conversationTTL = 50;
+                }
+            } else {
+                if (agent.sessionFinance && agent.sessionFinance.type === 'expense' && agent.sessionFinance.description === 'Luxury Shopping') {
+                    agent.logTransaction(agent.sessionFinance.amount, agent.sessionFinance.description, 'expense', time);
+                    const building = this.world.locations.find(l => l.name === 'Mall');
+                    if (building && building.stats.sessionRevenue && building.stats.sessionRevenue[agent.id]) {
+                        this.logBuildingTransaction(building, building.stats.sessionRevenue[agent.id], `Sales to ${agent.name}`, time);
+                        delete building.stats.sessionRevenue[agent.id];
+                    }
+                    agent.sessionFinance = undefined;
+                }
+            }
+
             // Health decay from hunger: ONLY at absolute starvation
             if (agent.hunger >= 100) {
                 agent.health = Math.max(0, agent.health - 0.1); // Faster decay when actually starving
@@ -139,7 +213,7 @@ export class BehaviorSystem {
             // Health and Sickness logic
             if (agent.state === 'TREATING') {
                 agent.health = Math.min(100, agent.health + 1.0);
-                const cost = 0.2;
+                const cost = 0.2 * this.priceMultiplier;
                 let hasPaid = false;
                 if (agent.cash >= cost) {
                     agent.cash -= cost;
@@ -182,8 +256,8 @@ export class BehaviorSystem {
                     }
                     agent.sessionFinance = undefined;
                 }
-                // Chance to get sick (Infection, Flu, etc.)
-                if (agent.health === 100 && Math.random() < 0.0002) {
+                // Chance to get sick (Infection, Flu, etc.) - Reduced 10x and use multiplier
+                if (agent.health === 100 && Math.random() < 0.00002 * this.riskMultiplier) {
                     agent.health = 30;
                     const illnesses = ["Severe Infection", "Respiratory Flu", "Food Poisoning"];
                     const illness = illnesses[Math.floor(Math.random() * illnesses.length)];
@@ -192,8 +266,8 @@ export class BehaviorSystem {
                     agent.conversationTTL = 50;
                 }
 
-                // Rare chance of a sudden critical health event (Heart Attack, Stroke)
-                if (agent.health > 80 && Math.random() < 0.00005) {
+                // Rare chance of a sudden critical health event (Heart Attack, Stroke) - Reduced 10x and use multiplier
+                if (agent.health > 80 && Math.random() < 0.000005 * this.riskMultiplier) {
                     agent.health = 5;
                     agent.memory.lastDiagnosis = "Cardiac Event";
                     agent.conversation = "My chest... it hurts!";
@@ -208,7 +282,8 @@ export class BehaviorSystem {
 
             // Rare Sudden Accident (Immediate death, very low probability)
             // Safety: No lightning/accidents inside buildings
-            if (!locAt && Math.random() < 0.00002) {
+            // Reduced 10x and use multiplier
+            if (!locAt && Math.random() < 0.000002 * this.riskMultiplier) {
                 const accidents = ["Traffic Accident", "Industrial Mishap", "Struck by Lightning"];
                 agent.state = 'DEAD';
                 agent.emoji = '🪦';
@@ -293,37 +368,32 @@ export class BehaviorSystem {
                         this.logBuildingTransaction(bank, -20, `Withdrawal (Health) by ${agent.name}`, time);
                         bank.stats.extra!.withdrawals += 20;
                         agent.conversation = "Withdrew money for medical bills!";
-                    } else if (agent.cash >= 10) {
-                        // Deposit
-                        const amount = agent.cash;
-                        bank.stats.extra!.deposits += amount;
-                        agent.bankBalance += amount;
-                        agent.cash = 0;
-                        agent.logTransaction(-amount, "Deposit to Bank", 'bank', time);
-                        this.logBuildingTransaction(bank, amount, `Deposit from ${agent.name}`, time);
-                        agent.conversation = "Money safely deposited!";
-                    } else if (agent.bankBalance >= 20) {
-                        // Regular Withdraw
-                        agent.bankBalance -= 20;
-                        agent.cash += 20;
-                        agent.logTransaction(20, "Bank Withdrawal", 'bank', time);
-                        this.logBuildingTransaction(bank, -20, `Regular Withdrawal by ${agent.name}`, time);
-                        bank.stats.extra!.withdrawals += 20;
-                        agent.conversation = "Withdrew $20 for spending!";
+                    } else if (agent.bankBalance >= 50 && agent.cash < 5 && Math.random() < 0.05) {
+                        // Regular Withdraw: Rare and only if nearly out of cash
+                        const amount = 50;
+                        agent.bankBalance -= amount;
+                        agent.cash += amount;
+                        agent.logTransaction(amount, "Bank Withdrawal", 'bank', time);
+                        this.logBuildingTransaction(bank, -amount, `Regular Withdrawal by ${agent.name}`, time);
+                        if (!bank.stats.extra) bank.stats.extra = { deposits: 0, withdrawals: 0, loans: 0 };
+                        bank.stats.extra.withdrawals += amount;
+                        agent.conversation = "Withdrew some cash for future needs.";
                     }
                     agent.state = 'IDLE';
                     agent.conversationTTL = 50;
                 }
             }
 
-            this.decideAction(agent, index, time);
+            this.decideAction(agent, index, time, agents);
         });
     }
 
-    decideAction(agent: Agent, agentIndex: number, time: number) {
+    decideAction(agent: Agent, agentIndex: number, time: number, allAgents: Agent[]) {
+        const totalWealth = agent.cash + agent.bankBalance;
+
         // High Priority: If arrested, force to Police Station (can interrupt moving)
         if (agent.state === 'ARRESTED') {
-            this.ensureAtLocation(agent, agentIndex, 'Police Station', 'SLEEPING'); // Use sleeping as "in jail"
+            this.ensureAtLocation(agent, agentIndex, 'Police Station', 'SLEEPING', allAgents); // Use sleeping as "in jail"
             if (Math.random() < 0.005) { // Chance to be released
                 agent.state = 'IDLE';
                 agent.conversation = "I've served my time.";
@@ -335,18 +405,13 @@ export class BehaviorSystem {
         const hour = Math.floor(time / 60) % 24;
         const isBankOpen = hour >= 9 && hour < 18;
 
-        // If has enough cash, priorize going to the bank
-        if (isBankOpen && agent.cash >= 10 && agent.state !== 'BANKING' && agent.state !== 'WORKING' && agent.state !== 'SLEEPING') {
-            agent.state = 'BANKING';
-        }
-
         if (agent.state === 'BANKING') {
             if (!isBankOpen) {
                 agent.state = 'IDLE';
                 agent.conversation = "Bank's closed. I'll come back tomorrow.";
                 agent.conversationTTL = 50;
             } else {
-                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING');
+                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
                 return;
             }
         }
@@ -360,51 +425,70 @@ export class BehaviorSystem {
 
         // Health Priority Logic: If health is low, prioritize recovery over work/leisure
         if (agent.health < 70 && agent.state !== 'SLEEPING') {
+            const hospitalCost = 0.2 * this.priceMultiplier;
             // Priority 1: Hospital (Fastest recovery)
-            if (agent.cash >= 10) {
-                this.ensureAtLocation(agent, agentIndex, 'Hospital', 'TREATING');
+            if (totalWealth >= hospitalCost) {
+                this.ensureAtLocation(agent, agentIndex, 'Hospital', 'TREATING', allAgents);
                 return;
             }
             // Priority 2: Eating (Moderate recovery + prevents decay)
-            else if (agent.cash >= 5 || agent.hunger > 50) {
-                if (agent.cash >= 5) {
-                    this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING');
+            const restaurantCost = 0.05 * this.priceMultiplier;
+            if (totalWealth >= restaurantCost || agent.hunger > 50) {
+                if (totalWealth >= restaurantCost) {
+                    this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING', allAgents);
                     return;
                 }
             }
 
-            // Priority 3: Bank (Get money or loan for health)
+            // Priority 3: Bank (Get money or loan for health) - MUST go if too poor for care
             if (isBankOpen && (agent.bankBalance >= 20 || agent.loanBalance < 200)) {
                 agent.state = 'BANKING';
-                agent.conversation = "I'm not feeling well, need money for care!";
+                agent.conversation = "I need money for medical treatment. To the bank!";
                 agent.conversationTTL = 50;
-                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING');
+                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
                 return;
             }
         }
 
         // Starving logic: High priority if hunger is dangerous (Interrupts moving)
-        // Wealthy agents start caring MUCH earlier (hunger > 20) to prevent any risk
-        const totalWealth = agent.cash + agent.bankBalance;
-        const hungerThreshold = totalWealth >= 10 ? 20 : 70;
-        if (agent.hunger > hungerThreshold && agent.state !== 'SLEEPING') {
-            if (agent.cash >= 10 || agent.bankBalance >= 10) {
-                this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING');
+        const starvationThreshold = totalWealth >= (1.0 * this.priceMultiplier) ? 20 : 70;
+        if (agent.hunger > starvationThreshold && agent.state !== 'SLEEPING') {
+            const restaurantCost = 0.05 * this.priceMultiplier;
+            const bakeryCost = 0.03 * this.priceMultiplier;
+            const homeCost = 0.01 * this.priceMultiplier;
+
+            if (totalWealth >= restaurantCost) {
+                this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING', allAgents);
                 return;
-            } else if (agent.cash >= 5) {
-                this.ensureAtLocation(agent, agentIndex, 'Bakery', 'EATING');
+            } else if (totalWealth >= bakeryCost) {
+                this.ensureAtLocation(agent, agentIndex, 'Bakery', 'EATING', allAgents);
                 return;
-            } else if (agent.cash >= 2) {
-                this.ensureAtLocation(agent, agentIndex, 'My House', 'EATING');
+            } else if (totalWealth >= homeCost) {
+                this.ensureAtLocation(agent, agentIndex, 'My House', 'EATING', allAgents);
                 return;
-            } else if (isBankOpen && (agent.bankBalance >= 20 || agent.loanBalance < 200)) {
-                // Can't afford house food? Go to bank
+            } else if (isBankOpen && (agent.bankBalance >= (5 * this.priceMultiplier) || agent.loanBalance < 200)) {
+                // Last resort: If too poor for any food, MUST go to bank for a loan
                 agent.state = 'BANKING';
-                agent.conversation = "I'm hungry but broke. Need to go to the bank!";
+                agent.conversation = "I'm hungry but broke. Need a loan!";
                 agent.conversationTTL = 50;
-                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING');
+                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
                 return;
             }
+        }
+
+        // Financial Management: Only deposit if very wealthy to reduce frequency
+        // Wealthy agents have much higher financial intention
+        const isWealthy = totalWealth >= 100 * this.priceMultiplier;
+        const depositChance = isWealthy ? 0.05 : 0.001;
+        const depositThreshold = isWealthy ? 50 : 100;
+
+        if (isBankOpen && agent.cash >= depositThreshold && agent.hunger < 20 && agent.health > 90 &&
+            Math.random() < depositChance && agent.state !== 'WORKING' && agent.state !== 'SLEEPING') {
+            agent.state = 'BANKING';
+            agent.conversation = isWealthy ? "Need to manage my growing capital." : "Better deposit this extra cash.";
+            agent.conversationTTL = 50;
+            this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
+            return;
         }
 
         // Low Priority check: If already moving to a routine destination, don't interrupt
@@ -413,12 +497,12 @@ export class BehaviorSystem {
         if (hour >= 22 || hour < 8) {
             // SLEEP TIME
             if (agent.state !== 'SLEEPING') {
-                this.ensureAtLocation(agent, agentIndex, 'My House', 'SLEEPING');
+                this.ensureAtLocation(agent, agentIndex, 'My House', 'SLEEPING', allAgents);
             }
         } else if (hour >= 8 && hour < 12) {
             // WORK TIME
             if (agent.state !== 'WORKING') {
-                this.ensureAtLocation(agent, agentIndex, this.getWorkLocation(agent), 'WORKING');
+                this.ensureAtLocation(agent, agentIndex, this.getWorkLocation(agent), 'WORKING', allAgents);
             }
         } else if (hour >= 12 && hour < 13) {
             // LUNCH - staggered start based on index (up to 15 mins)
@@ -426,40 +510,24 @@ export class BehaviorSystem {
             const currentMinute = time % 60;
 
             if (currentMinute >= minuteOffset && agent.state !== 'IDLE') {
-                this.ensureAtLocation(agent, agentIndex, this.getLeisureLocation(agentIndex), 'IDLE');
+                this.ensureAtLocation(agent, agentIndex, this.getLeisureLocation(agentIndex), 'IDLE', allAgents);
             }
         } else if (hour >= 13 && hour < 17) {
-            // WORK TIME
+            // WORK TIME (AFTERNOON)
             if (agent.state !== 'WORKING') {
-                this.ensureAtLocation(agent, agentIndex, this.getWorkLocation(agent), 'WORKING');
+                this.ensureAtLocation(agent, agentIndex, this.getWorkLocation(agent), 'WORKING', allAgents);
             }
-        } else if (hour >= 17 && hour < 19) {
-            // DINNER TIME
-            const isBankOpen = hour >= 9 && hour < 18;
-
-            // If too poor to eat but has money in bank, go withdraw during banking hours
-            if (agent.cash < 5 && agent.bankBalance >= 20 && isBankOpen) {
-                agent.state = 'BANKING';
-                agent.conversation = "Going to the bank to get some cash for dinner.";
-                agent.conversationTTL = 50;
-            }
-
-            if (agent.state !== 'EATING') {
-                if (agent.cash >= 5) {
-                    this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING');
-                } else {
-                    // Too poor and can't withdraw
-                    if (agent.state !== 'IDLE') {
-                        agent.state = 'IDLE';
-                        agent.conversation = "I don't have enough money for a restaurant...";
-                        agent.conversationTTL = 50;
-                    }
-                }
+        } else if (hour >= 17 && hour < 22) {
+            // LEISURE
+            if (agent.state !== 'IDLE' && agent.state !== 'SHOPPING') {
+                const loc = this.getLeisureLocation(agentIndex, agent);
+                const desState = loc === 'Mall' ? 'SHOPPING' : 'IDLE';
+                this.ensureAtLocation(agent, agentIndex, loc, desState, allAgents);
             }
         } else {
-            // FREE TIME
-            if (agent.state !== 'IDLE' && agent.state !== 'TALKING' && agent.state !== 'EATING') {
-                this.ensureAtLocation(agent, agentIndex, this.getLeisureLocation(agentIndex + 1), 'IDLE');
+            // FREE TIME (Catch-all for remaining hours, e.g., 22-23, 0-7 if not sleeping)
+            if (agent.state !== 'IDLE' && agent.state !== 'TALKING' && agent.state !== 'EATING' && agent.state !== 'SHOPPING') {
+                this.ensureAtLocation(agent, agentIndex, this.getLeisureLocation(agentIndex + 1, agent), 'IDLE', allAgents);
             } else if (agent.state === 'IDLE' && Math.random() < 0.02) {
                 this.wander(agent);
             }
@@ -474,23 +542,30 @@ export class BehaviorSystem {
     }
 
     getIncome(agent: Agent): number {
+        let baseIncome = 0.1;
         switch (agent.role) {
-            case 'Mayor': return 0.5;
-            case 'Doctor': return 0.4;
-            case 'Police': return 0.3;
-            case 'Librarian': return 0.2;
-            case 'Baker': return 0.2;
-            case 'Gardener': return 0.1;
-            default: return 0.1;
+            case 'Mayor': baseIncome = 0.5; break;
+            case 'Doctor': baseIncome = 0.4; break;
+            case 'Police': baseIncome = 0.3; break;
+            case 'Librarian': baseIncome = 0.2; break;
+            case 'Baker': baseIncome = 0.2; break;
+            case 'Gardener': baseIncome = 0.1; break;
+            default: baseIncome = 0.1; break;
         }
+        return baseIncome * this.wageMultiplier;
     }
 
-    getLeisureLocation(index: number): string {
+    getLeisureLocation(index: number, agent?: Agent): string {
+        const totalWealth = agent ? (agent.cash + agent.bankBalance) : 0;
+        const isWealthy = totalWealth > 100 * this.priceMultiplier;
+
         const locations = ['Park', 'Library', 'Bakery', 'Restaurant'];
+        if (isWealthy && Math.random() < 0.7) return 'Mall'; // Wealthy agents love the Mall
+
         return locations[index % locations.length];
     }
 
-    ensureAtLocation(agent: Agent, agentIndex: number, locationName: string, desiredState: AgentState) {
+    ensureAtLocation(agent: Agent, agentIndex: number, locationName: string, desiredState: AgentState, allAgents: Agent[]) {
         const location = this.world.locations.find(l => l.name === locationName || l.type === locationName.toLowerCase())
             || this.world.locations[0];
 
@@ -498,22 +573,42 @@ export class BehaviorSystem {
 
         let target = location.interior || location.entry;
 
-        // If interior is available and it's a building, distribute agents
+        // If it's a building with interior, find a good spot
         if (location.interior && location.width && location.height) {
+            // Priority: Try to find a FREE tile in the interior first
+            let foundFree = false;
+            const innerX = location.x! + 1;
+            const innerY = location.y! + 1;
             const innerW = location.width - 2;
             const innerH = location.height - 2;
-            const offsetX = (agentIndex % innerW) - Math.floor(innerW / 2);
-            const offsetY = (Math.floor(agentIndex / innerW) % innerH) - Math.floor(innerH / 2);
 
-            let tx = location.interior.x + offsetX;
-            let ty = location.interior.y + offsetY;
+            // Spiral or random search for a free tile inside
+            for (let attempt = 0; attempt < 10; attempt++) {
+                const tx = innerX + Math.floor(Math.random() * innerW);
+                const ty = innerY + Math.floor(Math.random() * innerH);
 
-            // Prevent blocking the entry door tile
-            if (tx === location.entry.x && ty === location.entry.y) {
-                ty -= 1; // Move at least one tile inside
+                // Don't stand on the door tile inside
+                if (tx === location.entry.x && ty === location.entry.y) continue;
+
+                const occupies = this.world.grid[ty][tx] === 'floor';
+                const isOccupied = allAgents.some(a => a.id !== agent.id && a.position.x === tx && a.position.y === ty);
+
+                if (occupies && !isOccupied) {
+                    target = { x: tx, y: ty };
+                    foundFree = true;
+                    break;
+                }
             }
 
-            target = { x: tx, y: ty };
+            // Fallback: If no free spot found, use the old index-based distribution but ensure it's not the door
+            if (!foundFree) {
+                const offsetX = (agentIndex % innerW);
+                const offsetY = (Math.floor(agentIndex / innerW) % innerH);
+                target = { x: innerX + offsetX, y: innerY + offsetY };
+                if (target.x === location.entry.x && target.y === location.entry.y) {
+                    target.y = Math.max(innerY, target.y - 1);
+                }
+            }
         }
 
         if (this.isAt(agent, target)) {

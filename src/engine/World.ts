@@ -58,12 +58,13 @@ export class World {
     this.addBuilding(2, 12, 5, 5, 'Bakery');
     this.addBuilding(8, 12, 5, 5, 'Police Station');
     this.addBuilding(20, 12, 5, 5, 'Hospital');
+    this.addBuilding(26, 12, 5, 5, 'Mall');
 
-    // Add Park (Just an area)
+    // Add Park (Just an area) - placed in open space to the right of Bank
     this.locations.push({
       name: 'Park',
-      x: 23, y: 13, width: 5, height: 5, // Approximate area for park
-      entry: { x: 25, y: 15 },
+      x: 35, y: 2, width: 5, height: 5,
+      entry: { x: 37, y: 7 },
       type: 'public',
       stats: { visits: 0, revenue: 0, transactions: [] }
     });
