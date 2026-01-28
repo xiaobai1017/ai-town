@@ -10,9 +10,18 @@ export interface Location {
   name: string;
   entry: Coordinate;
   interior?: Coordinate;
+  x?: number;
+  y?: number;
   width?: number;
   height?: number;
   type: 'residential' | 'commercial' | 'public';
+  stats: {
+    visits: number;
+    revenue: number;
+    transactions: { amount: number, description: string, timestamp: number }[];
+    sessionRevenue?: Record<string, number>; // agentId -> current session amount
+    extra?: Record<string, number>; // For bank: deposits, withdrawals
+  };
 }
 
 export class World {
@@ -43,14 +52,20 @@ export class World {
 
     // Add some buildings/walls
     this.addBuilding(2, 2, 5, 5, 'My House');
+    this.addBuilding(8, 2, 5, 5, 'Restaurant');
     this.addBuilding(20, 2, 5, 5, 'Library');
+    this.addBuilding(26, 2, 5, 5, 'Bank');
     this.addBuilding(2, 12, 5, 5, 'Bakery');
+    this.addBuilding(8, 12, 5, 5, 'Police Station');
+    this.addBuilding(20, 12, 5, 5, 'Hospital');
 
     // Add Park (Just an area)
     this.locations.push({
       name: 'Park',
+      x: 23, y: 13, width: 5, height: 5, // Approximate area for park
       entry: { x: 25, y: 15 },
-      type: 'public'
+      type: 'public',
+      stats: { visits: 0, revenue: 0, transactions: [] }
     });
   }
 
@@ -68,11 +83,18 @@ export class World {
     this.grid[y + h - 1][x + Math.floor(w / 2)] = 'floor';
     this.locations.push({
       name,
+      x, y,
       entry: { x: x + Math.floor(w / 2), y: y + h - 1 }, // On the door tile
       interior: { x: x + Math.floor(w / 2), y: y + Math.floor(h / 2) }, // Center of building
       width: w,
       height: h,
-      type: 'public' // simplified
+      type: 'public', // simplified
+      stats: {
+        visits: 0,
+        revenue: 0,
+        transactions: [],
+        extra: name === 'Bank' ? { deposits: 0, withdrawals: 0, loans: 0 } : undefined
+      }
     });
   }
 

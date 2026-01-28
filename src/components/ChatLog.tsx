@@ -4,9 +4,10 @@ import { DialoguePacket } from '@/ai/DialogueSystem';
 
 interface ChatLogProps {
     logs: DialoguePacket[];
+    onShowHistory: (speakerName: string, listenerName: string) => void;
 }
 
-export function ChatLog({ logs }: ChatLogProps) {
+export function ChatLog({ logs, onShowHistory }: ChatLogProps) {
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -27,7 +28,12 @@ export function ChatLog({ logs }: ChatLogProps) {
                     logs.map((log, i) => (
                         <div key={i} className="text-sm border-l-2 border-indigo-200 pl-2">
                             <div className="flex justify-between text-xs text-slate-500 mb-1">
-                                <span className="font-medium text-indigo-600">{log.speaker}</span>
+                                <button
+                                    onClick={() => onShowHistory(log.speaker, log.listener)}
+                                    className="font-medium text-indigo-600 hover:underline cursor-pointer"
+                                >
+                                    {log.speaker} to {log.listener}
+                                </button>
                                 <span>{log.timestamp}</span>
                             </div>
                             <p className="text-slate-800">"{log.text}"</p>

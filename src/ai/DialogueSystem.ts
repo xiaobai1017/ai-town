@@ -25,8 +25,12 @@ export class DialogueSystem {
                 const a = agents[i];
                 const b = agents[j];
 
-                // Check distance and random chance
-                if (this.isClose(a, b) && a.state !== 'TALKING' && b.state !== 'TALKING' && Math.random() < 0.02) {
+                // Check distance and random chance, and ensure they are not sleeping
+                if (this.isClose(a, b) &&
+                    a.state !== 'TALKING' && b.state !== 'TALKING' &&
+                    a.state !== 'SLEEPING' && b.state !== 'SLEEPING' &&
+                    a.state !== 'DEAD' && b.state !== 'DEAD' &&
+                    Math.random() < 0.02) {
                     this.startConversation(a, b);
                     return; // One per tick to avoid spam
                 }
@@ -51,13 +55,61 @@ export class DialogueSystem {
         b.conversationTTL = 100;
 
         try {
-            const promptA = `You are ${a.name}, a ${a.role}. You meet ${b.name}, a ${b.role}. Say something short (max 10 words) to them.`;
-            const textA_Final = await generateResponse(LLM_MODEL, promptA);
+            const intimacyA = a.relationships[b.id] || 0;
+            const intimacyB = b.relationships[a.id] || 0;
+
+            const relationshipA = intimacyA > 80 ? "best friend" : intimacyA > 40 ? "friend" : "acquaintance";
+            const relationshipB = intimacyB > 80 ? "best friend" : intimacyB > 40 ? "friend" : "acquaintance";
+
+            const historyA = a.conversationHistory[b.id] || [];
+            const historyStrA = historyA.length > 0 ? `Your past interactions with ${b.name}: ${historyA.join('; ')}.` : '';
+
+            const promptA = `You are ${a.name} (${a.description}). You meet ${b.name} (${b.description}), who is your ${relationshipA}. 
+            ${historyStrA} 
+            Say something vivid and expressive (max 15 words) matching your personality.`;
+            const textA_Raw = await generateResponse(LLM_MODEL, promptA);
+            const textA_Final = textA_Raw.trim();
             console.log('Agent A said:', textA_Final);
 
-            const promptB = `You are ${b.name}, a ${b.role}. ${a.name} just said: "${textA_Final}". meaningful reply (max 10 words).`;
-            const textB_Final = await generateResponse(LLM_MODEL, promptB);
-            console.log('Agent B said:', textB_Final);
+            const historyB = b.conversationHistory[a.id] || [];
+            const historyStrB = historyB.length > 0 ? `Your past interactions with ${a.name}: ${historyB.join('; ')}.` : '';
+
+            const promptB = `You are ${b.name} (${b.description}). ${a.name} (${a.description}), your ${relationshipB}, said: "${textA_Final}". 
+            ${historyStrB}
+            Reply vividly and expressively (max 15 words). Also, strictly start with a tag: [POS], [NEU], or [NEG] based on your reaction.`;
+            const textB_Raw = await generateResponse(LLM_MODEL, promptB);
+
+            let sentiment: 'POS' | 'NEG' | 'NEU' = 'NEU';
+            let textB_Final = textB_Raw.trim();
+
+            if (textB_Final.includes('[POS]')) { sentiment = 'POS'; }
+            else if (textB_Final.includes('[NEG]')) { sentiment = 'NEG'; }
+
+            // Clean all possible sentiment tags from the text
+            textB_Final = textB_Final.replace(/\[POS\]|\[NEG\]|\[NEU\]/g, '').trim();
+
+            console.log('Agent B reaction:', sentiment);
+            a.lastSentiment = sentiment;
+            b.lastSentiment = sentiment;
+
+            // Change intimacy based on sentiment
+            let delta = sentiment === 'POS' ? 6 : sentiment === 'NEG' ? -4 : 1;
+            delta += Math.floor(Math.random() * 3) - 1; // Random noise
+
+            a.relationships[b.id] = Math.max(0, Math.min(100, (a.relationships[b.id] || 0) + delta));
+            b.relationships[a.id] = Math.max(0, Math.min(100, (b.relationships[a.id] || 0) + delta));
+
+            // Update conversation history (keep last 5)
+            const updateHistory = (agent: Agent, otherId: string, message: string) => {
+                const h = agent.conversationHistory[otherId] || [];
+                h.push(message);
+                if (h.length > 5) h.shift();
+                agent.conversationHistory[otherId] = h;
+            };
+            updateHistory(a, b.id, `${a.name}: ${textA_Final}`);
+            updateHistory(a, b.id, `${b.name}: ${textB_Final}`);
+            updateHistory(b, a.id, `${a.name}: ${textA_Final}`);
+            updateHistory(b, a.id, `${b.name}: ${textB_Final}`);
 
             this.dialogueLog.push({
                 speaker: a.name,
