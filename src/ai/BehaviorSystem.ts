@@ -161,7 +161,7 @@ export class BehaviorSystem {
 
             // Shopping logic: High-end consumption at the Mall
             if (agent.state === 'SHOPPING') {
-                const luxuryCost = 0.5 * this.priceMultiplier;
+                const luxuryCost = Math.max(5.0, 0.5 * this.priceMultiplier); // Minimum $5.00 spending
                 let hasPaid = false;
                 if (agent.cash >= luxuryCost) {
                     agent.cash -= luxuryCost;
@@ -503,8 +503,9 @@ export class BehaviorSystem {
             return;
         }
 
-        // Low Priority check: If already moving to a routine destination, don't interrupt
-        if (agent.state === 'MOVING') return;
+        // Low Priority check: If already moving to a routine destination, don't interrupt UNLESS starving
+        const criticalHunger = totalWealth >= (1.0 * this.priceMultiplier) ? 30 : 80;
+        if (agent.state === 'MOVING' && agent.hunger < criticalHunger) return;
 
         if (hour >= 22 || hour < 8) {
             // SLEEP TIME

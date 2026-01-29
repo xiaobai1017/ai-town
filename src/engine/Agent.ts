@@ -149,8 +149,8 @@ export class Agent {
 
     // Increase charm based on shopping amount and number of friends
     increaseCharm(shoppingAmount: number) {
-        const baseCharmPerUnit = 1.0; // Reduced charm gain per 1.0 unit cost
-        const baseCharmGain = Math.min(10, Math.max(1, Math.floor(shoppingAmount * baseCharmPerUnit)));
+        const charmPer5Units = 1; // 1 charm per $5.00 spent
+        const baseCharmGain = Math.min(10, Math.max(1, Math.floor(shoppingAmount / 5) * charmPer5Units));
         
         // Calculate number of friends (relationships >= 50)
         const friendCount = Object.values(this.relationships).filter(intimacy => intimacy >= 50).length;
