@@ -133,7 +133,11 @@ export default function Home() {
               .sort((a, b) => b.charm - a.charm)
               .slice(0, 3)
               .map((agent, index) => (
-                <span key={agent.id} className="flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm">
+                <span 
+                  key={agent.id} 
+                  onClick={() => setSelectedAgent(agent)}
+                  className="flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm cursor-pointer hover:shadow-md transition-all"
+                >
                   <span className="text-xs font-black text-purple-600">#{index + 1}</span>
                   <span>{agent.state === 'DEAD' ? '🪦' : agent.emoji}</span>
                   <span className="font-medium">{agent.name}</span>

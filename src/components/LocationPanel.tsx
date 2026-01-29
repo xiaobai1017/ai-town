@@ -96,6 +96,18 @@ export function LocationPanel({ location, onClose }: LocationPanelProps) {
                                 <div className="text-lg font-bold text-rose-600">${location.stats.extra.loans.toFixed(2)}</div>
                             </div>
                         )}
+                        {location.stats.extra.arrests !== undefined && (
+                            <div className="bg-red-50 p-3 rounded-xl border border-red-100 text-center">
+                                <div className="text-[10px] uppercase font-bold text-red-400 mb-1">Total Arrests</div>
+                                <div className="text-lg font-bold text-red-600">{location.stats.extra.arrests}</div>
+                            </div>
+                        )}
+                        {location.stats.extra.bailCollected !== undefined && (
+                            <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-100 text-center">
+                                <div className="text-[10px] uppercase font-bold text-emerald-400 mb-1">Bail Collected</div>
+                                <div className="text-lg font-bold text-emerald-600">${location.stats.extra.bailCollected.toFixed(2)}</div>
+                            </div>
+                        )}
                     </div>
                 )}
 

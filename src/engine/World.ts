@@ -20,7 +20,7 @@ export interface Location {
     revenue: number;
     transactions: { amount: number, description: string, timestamp: number }[];
     sessionRevenue?: Record<string, number>; // agentId -> current session amount
-    extra?: Record<string, number>; // For bank: deposits, withdrawals
+    extra?: Record<string, number>; // For bank: deposits, withdrawals; For Police: arrests, bailCollected
   };
 }
 
@@ -94,7 +94,8 @@ export class World {
         visits: 0,
         revenue: 0,
         transactions: [],
-        extra: name === 'Bank' ? { deposits: 0, withdrawals: 0, loans: 0 } : undefined
+        extra: name === 'Bank' ? { deposits: 0, withdrawals: 0, loans: 0 } : 
+             name === 'Police Station' ? { arrests: 0, bailCollected: 0 } : undefined
       }
     });
   }
