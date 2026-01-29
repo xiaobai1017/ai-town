@@ -13,7 +13,7 @@ export async function generateResponse(model: string, prompt: string): Promise<s
             body: JSON.stringify({
                 model: model,
                 prompt: prompt,
-                temperature: 0.5,
+                temperature: 0.4,
                 stream: false
             }),
         });

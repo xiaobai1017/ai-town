@@ -156,7 +156,7 @@ export class BehaviorSystem {
                     }
                     agent.sessionFinance = undefined;
                 }
-                agent.hunger = Math.min(100, agent.hunger + 0.05);
+                agent.hunger = Math.min(100, agent.hunger + 0.02); // Reduced hunger rate - takes about 3 days to reach maximum
             }
 
             // Shopping logic: High-end consumption at the Mall
@@ -183,9 +183,12 @@ export class BehaviorSystem {
                     }
                     agent.sessionFinance.amount -= luxuryCost;
 
+                    // Charm system: increase charm based on shopping amount
+                    agent.increaseCharm(luxuryCost);
+                    
                     if (Math.random() < 0.05) {
                         agent.state = 'IDLE';
-                        agent.conversation = "That was a great shopping trip!";
+                        agent.conversation = `Great shopping! My charm is now ${Math.round(agent.charm)}!`;
                         agent.conversationTTL = 50;
                     }
                 } else {
@@ -423,34 +426,7 @@ export class BehaviorSystem {
             agent.conversationTTL = 50;
         }
 
-        // Health Priority Logic: If health is low, prioritize recovery over work/leisure
-        if (agent.health < 70 && agent.state !== 'SLEEPING') {
-            const hospitalCost = 0.2 * this.priceMultiplier;
-            // Priority 1: Hospital (Fastest recovery)
-            if (totalWealth >= hospitalCost) {
-                this.ensureAtLocation(agent, agentIndex, 'Hospital', 'TREATING', allAgents);
-                return;
-            }
-            // Priority 2: Eating (Moderate recovery + prevents decay)
-            const restaurantCost = 0.05 * this.priceMultiplier;
-            if (totalWealth >= restaurantCost || agent.hunger > 50) {
-                if (totalWealth >= restaurantCost) {
-                    this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING', allAgents);
-                    return;
-                }
-            }
-
-            // Priority 3: Bank (Get money or loan for health) - MUST go if too poor for care
-            if (isBankOpen && (agent.bankBalance >= 20 || agent.loanBalance < 200)) {
-                agent.state = 'BANKING';
-                agent.conversation = "I need money for medical treatment. To the bank!";
-                agent.conversationTTL = 50;
-                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
-                return;
-            }
-        }
-
-        // Starving logic: High priority if hunger is dangerous (Interrupts moving)
+        // Starving logic: HIGHEST PRIORITY - always prioritize eating when hungry (Interrupts moving)
         const starvationThreshold = totalWealth >= (1.0 * this.priceMultiplier) ? 20 : 70;
         if (agent.hunger > starvationThreshold && agent.state !== 'SLEEPING') {
             const restaurantCost = 0.05 * this.priceMultiplier;
@@ -476,9 +452,45 @@ export class BehaviorSystem {
             }
         }
 
-        // Financial Management: Only deposit if very wealthy to reduce frequency
-        // Wealthy agents have much higher financial intention
+        // Health Priority Logic: If health is low, prioritize recovery over work/leisure
+        if (agent.health < 70 && agent.state !== 'SLEEPING') {
+            const hospitalCost = 0.2 * this.priceMultiplier;
+            // Priority 1: Hospital (Fastest recovery)
+            if (totalWealth >= hospitalCost) {
+                this.ensureAtLocation(agent, agentIndex, 'Hospital', 'TREATING', allAgents);
+                return;
+            }
+            // Priority 2: Eating (Moderate recovery + prevents decay)
+            const restaurantCost = 0.05 * this.priceMultiplier;
+            if (totalWealth >= restaurantCost) {
+                this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING', allAgents);
+                return;
+            }
+
+            // Priority 3: Bank (Get money or loan for health) - MUST go if too poor for care
+            if (isBankOpen && (agent.bankBalance >= 20 || agent.loanBalance < 200)) {
+                agent.state = 'BANKING';
+                agent.conversation = "I need money for medical treatment. To the bank!";
+                agent.conversationTTL = 50;
+                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
+                return;
+            }
+        }
+
+        // Charm system: Wealthy agents prioritize shopping to increase charm
         const isWealthy = totalWealth >= 100 * this.priceMultiplier;
+        const hasBasicNeedsMet = agent.hunger < 30 && agent.health > 80;
+        const isCharmSeeker = isWealthy && hasBasicNeedsMet && agent.charm < 100;
+        
+        if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < 0.1) {
+            agent.state = 'SHOPPING';
+            agent.conversation = "Time to shop and increase my charm!";
+            agent.conversationTTL = 50;
+            this.ensureAtLocation(agent, agentIndex, 'Mall', 'SHOPPING', allAgents);
+            return;
+        }
+
+        // Financial Management: Only deposit if very wealthy to reduce frequency
         const depositChance = isWealthy ? 0.05 : 0.001;
         const depositThreshold = isWealthy ? 50 : 100;
 

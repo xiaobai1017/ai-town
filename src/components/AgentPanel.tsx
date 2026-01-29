@@ -72,6 +72,20 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                     </div>
                 </div>
 
+                <div>
+                    <span className="font-semibold text-slate-500 text-sm">Charm</span>
+                    <div className="w-full bg-slate-100 rounded-full h-2 mt-1">
+                        <div
+                            className={`h-full rounded-full transition-all bg-purple-500`}
+                            style={{ width: `${agent.charm}%` }}
+                        ></div>
+                    </div>
+                    <div className="flex justify-between items-center mt-1">
+                        <span className="text-xs text-slate-400">Social Status</span>
+                        <span className="text-xs font-bold text-purple-600">{agent.charm}/100</span>
+                    </div>
+                </div>
+
                 <div className="space-y-3">
                     <div className="flex justify-between items-center">
                         <span className="font-semibold text-slate-500 text-sm italic tracking-tight uppercase">Economy & Finance</span>

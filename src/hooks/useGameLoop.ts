@@ -94,14 +94,21 @@ export function useGameLoop() {
 
             // Update Dialogue
             if (dialogueSystemRef.current) {
-                dialogueSystemRef.current.update(currentState.agents);
+                dialogueSystemRef.current.update(currentState.agents, newTime);
             }
 
             // Check if all agents are dead
             const allDead = currentState.agents.length > 0 && currentState.agents.every(a => a.state === 'DEAD');
+            
+            // Check if any agent has reached maximum charm
+            const charmWinner = currentState.agents.find(a => a.charm >= 100);
+            
             let isRunning = currentState.isRunning;
             if (allDead && isRunning) {
                 console.log("All residents have passed away. Stopping simulation.");
+                isRunning = false;
+            } else if (charmWinner && isRunning) {
+                console.log(`Charm winner: ${charmWinner.name} reached maximum charm!`);
                 isRunning = false;
             }
 

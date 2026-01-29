@@ -46,6 +46,8 @@ export class Agent {
     deathCause?: string;
     deathTime?: number;
     livingTicks: number = 0;
+    charm: number = 0; // 0-100, charm level from shopping and social status
+    lastShoppingAmount: number = 0; // Track last shopping amount for charm calculation
 
     constructor(id: string, name: string, role: string, startPos: Coordinate, color: string, emoji: string, description: string = "A resident of AI Town.") {
         this.id = id;
@@ -142,5 +144,12 @@ export class Agent {
         if (this.transactions.length > 100) {
             this.transactions.pop();
         }
+    }
+
+    // Increase charm based on shopping amount
+    increaseCharm(shoppingAmount: number) {
+        const charmGain = Math.min(5, Math.max(1, Math.floor(shoppingAmount / 10)));
+        this.charm = Math.min(100, this.charm + charmGain);
+        this.lastShoppingAmount = shoppingAmount;
     }
 }

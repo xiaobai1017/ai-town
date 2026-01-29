@@ -125,6 +125,23 @@ export default function Home() {
               </div>
             </div>
           </div>
+
+          {/* Charm Rankings */}
+          <div className="flex items-center gap-2 text-sm text-slate-600 bg-purple-50 p-2 rounded-lg">
+            <span className="text-purple-700 font-bold">👑 Charm Rankings:</span>
+            {gameState.agents
+              .sort((a, b) => b.charm - a.charm)
+              .slice(0, 3)
+              .map((agent, index) => (
+                <span key={agent.id} className="flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm">
+                  <span className="text-xs font-black text-purple-600">#{index + 1}</span>
+                  <span>{agent.state === 'DEAD' ? '🪦' : agent.emoji}</span>
+                  <span className="font-medium">{agent.name}</span>
+                  <span className="text-xs text-purple-600">{agent.charm}</span>
+                </span>
+              ))
+            }
+          </div>
         </div>
       </header>
 
@@ -188,36 +205,53 @@ export default function Home() {
         />
       )}
 
-      {/* Extinction Overlay */}
-      {gameState.agents.length > 0 && gameState.agents.every(a => a.state === 'DEAD') && (
+      {/* Game Over Overlay - Charm Winner or Extinction */}
+      {(gameState.agents.length > 0 && (gameState.agents.every(a => a.state === 'DEAD') || gameState.agents.some(a => a.charm >= 100))) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-1000">
-          <div className="bg-slate-900 border-2 border-rose-500/50 p-12 rounded-3xl shadow-[0_0_50px_rgba(225,29,72,0.3)] text-center max-w-md mx-4 transform animate-in zoom-in duration-500">
-            <div className="w-24 h-24 bg-rose-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-rose-500/30">
-              <Skull size={48} className="text-rose-500 animate-pulse" />
+          <div className="bg-slate-900 border-2 border-purple-500/50 p-12 rounded-3xl shadow-[0_0_50px_rgba(124,58,237,0.3)] text-center max-w-md mx-4 transform animate-in zoom-in duration-500">
+            <div className="w-24 h-24 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-purple-500/30">
+              {gameState.agents.some(a => a.charm >= 100) ? (
+                <span className="text-4xl">👑</span>
+              ) : (
+                <Skull size={48} className="text-purple-500 animate-pulse" />
+              )}
             </div>
-            <h2 className="text-4xl font-black text-white mb-4 tracking-tighter uppercase italic">Extinction</h2>
+            <h2 className="text-4xl font-black text-white mb-4 tracking-tighter uppercase italic">
+              {gameState.agents.some(a => a.charm >= 100) ? 'Charm Champion' : 'Final Ranking'}
+            </h2>
             <p className="text-slate-400 font-medium leading-relaxed mb-6">
-              Every resident of AI Town has passed away. The simulation has ended in silence.
+              {gameState.agents.some(a => a.charm >= 100) ? (
+                `A resident has reached maximum charm! Here are the final rankings:`
+              ) : (
+                `Every resident of AI Town has passed away. Here are the final charm rankings:`
+              )}
             </p>
 
             <div className="bg-slate-950/50 rounded-2xl border border-slate-800 p-4 max-h-64 overflow-y-auto mb-8 text-left">
-              <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 sticky top-0 bg-slate-900/90 py-1 backdrop-blur-sm border-b border-slate-800">Final Census</h3>
+              <h3 className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-4 sticky top-0 bg-slate-900/90 py-1 backdrop-blur-sm border-b border-slate-800">Charm Rankings</h3>
               <div className="space-y-3">
-                {gameState.agents.map((a) => (
+                {gameState.agents
+                  .sort((a, b) => b.charm - a.charm)
+                  .map((a, index) => (
                   <div
                     key={a.id}
                     onClick={() => setSelectedAgent(a)}
                     className="flex justify-between items-center gap-4 text-sm border-b border-slate-800/50 pb-2 last:border-0 last:pb-0 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors group"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="text-xl group-hover:scale-110 transition-transform">{a.emoji}</span>
+                      <span className="text-xl group-hover:scale-110 transition-transform">
+                        {index === 0 ? '👑' : index === 1 ? '🥈' : index === 2 ? '🥉' : a.state === 'DEAD' ? '🪦' : a.emoji}
+                      </span>
                       <div>
-                        <p className="font-bold text-slate-200 leading-none group-hover:text-white">{a.name}</p>
+                        <p className={`font-bold leading-none group-hover:text-white ${a.charm >= 100 ? 'text-yellow-400' : 'text-slate-200'}`}>
+                          {a.name}{a.charm >= 100 ? ' (Winner!)' : ''}
+                        </p>
                         <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold">{a.role}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-rose-400 font-black text-xs">{a.deathCause}</p>
+                      <p className={`font-black text-xs ${a.charm >= 100 ? 'text-yellow-400' : 'text-purple-400'}`}>Charm: {a.charm}</p>
+                      {a.state === 'DEAD' && <p className="text-rose-400 font-black text-xs">{a.deathCause}</p>}
                       <p className="text-[10px] text-slate-500 font-mono italic">Survived: {(a.livingTicks / 60).toFixed(1)} hrs</p>
                     </div>
                   </div>
