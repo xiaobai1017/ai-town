@@ -301,7 +301,8 @@ export class BehaviorSystem {
             // Death logic
             if (agent.health <= 0) {
                 agent.health = 0;
-                if (Math.random() < 0.01) { // 1% chance per tick at 0 health
+                // Reduce death chance to give more time for hospital treatment
+                if (Math.random() < 0.001) { // 0.1% chance per tick at 0 health
                     agent.state = 'DEAD';
                     agent.emoji = '🪦';
                     agent.deathTime = time;
@@ -309,7 +310,7 @@ export class BehaviorSystem {
                     if (agent.hunger >= 99.9) {
                         agent.deathCause = "Starvation";
                     } else if (agent.memory.lastDiagnosis) {
-                        agent.deathCause = agent.memory.lastDiagnosis;
+                        agent.deathCause = "Untreated " + agent.memory.lastDiagnosis;
                     } else {
                         agent.deathCause = "Chronic Illness";
                     }
