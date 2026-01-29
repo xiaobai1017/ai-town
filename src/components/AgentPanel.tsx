@@ -18,6 +18,24 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
         .sort(([, a], [, b]) => b - a)
         .slice(0, 3); // Top 3 friends
 
+    // Calculate daily wage based on role
+    const getDailyWage = (role: string): number => {
+        let baseWagePerFrame = 0.1;
+        switch (role) {
+            case 'Mayor': baseWagePerFrame = 0.5; break;
+            case 'Doctor': baseWagePerFrame = 0.4; break;
+            case 'Police': baseWagePerFrame = 0.3; break;
+            case 'Librarian': baseWagePerFrame = 0.2; break;
+            case 'Baker': baseWagePerFrame = 0.2; break;
+            case 'Gardener': baseWagePerFrame = 0.1; break;
+            default: baseWagePerFrame = 0.1; break;
+        }
+        // Game time: 1 day = 24 hours = 24 * 60 = 1440 frames
+        // Assuming 8 hours of work per day
+        const workFramesPerDay = 8 * 60;
+        return baseWagePerFrame * workFramesPerDay;
+    };
+
     return (
         <div className="fixed right-4 top-20 w-80 bg-white p-4 rounded-lg shadow-xl border border-slate-200 max-h-[80vh] overflow-y-auto z-[60]">
             <div className="flex justify-between items-center mb-4">
@@ -30,9 +48,15 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
             </div>
 
             <div className="space-y-4">
-                <div>
-                    <span className="font-semibold text-slate-500 text-sm">Role</span>
-                    <p className="text-lg">{agent.role}</p>
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <span className="font-semibold text-slate-500 text-sm">Role</span>
+                        <p className="text-lg">{agent.role}</p>
+                    </div>
+                    <div>
+                        <span className="font-semibold text-slate-500 text-sm">Daily Wage</span>
+                        <p className="text-lg">${getDailyWage(agent.role).toFixed(2)}</p>
+                    </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

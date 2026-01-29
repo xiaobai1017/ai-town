@@ -147,11 +147,19 @@ export class Agent {
         }
     }
 
-    // Increase charm based on shopping amount
+    // Increase charm based on shopping amount and number of friends
     increaseCharm(shoppingAmount: number) {
         const baseCharmPerUnit = 1.0; // Reduced charm gain per 1.0 unit cost
-        const charmGain = Math.min(10, Math.max(1, Math.floor(shoppingAmount * baseCharmPerUnit)));
-        this.charm = Math.min(100, this.charm + charmGain);
+        const baseCharmGain = Math.min(10, Math.max(1, Math.floor(shoppingAmount * baseCharmPerUnit)));
+        
+        // Calculate number of friends (relationships >= 50)
+        const friendCount = Object.values(this.relationships).filter(intimacy => intimacy >= 50).length;
+        
+        // Additional charm gain from friends
+        const friendBonus = Math.min(5, friendCount); // Maximum 5 bonus charm from friends
+        
+        const totalCharmGain = baseCharmGain + friendBonus;
+        this.charm = Math.min(100, this.charm + totalCharmGain);
         this.lastShoppingAmount = shoppingAmount;
     }
 }
