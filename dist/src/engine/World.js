@@ -1,0 +1,109 @@
+export class World {
+    constructor(width = 30, height = 20) {
+        this.width = width;
+        this.height = height;
+        this.grid = Array(height).fill(null).map(() => Array(width).fill('grass'));
+        this.locations = [];
+        this.generateMap();
+    }
+    generateMap() {
+        // Simple procedural generation or hardcoded layout
+        // Fill with grass by default
+        // Add roads (simple grid pattern)
+        for (let x = 0; x < this.width; x++) {
+            this.grid[10][x] = 'road';
+        }
+        for (let y = 0; y < this.height; y++) {
+            this.grid[y][15] = 'road';
+        }
+        // Add some buildings/walls
+        this.addBuilding(2, 2, 5, 5, 'My House');
+        this.addBuilding(8, 2, 5, 5, 'Restaurant');
+        this.addBuilding(20, 2, 5, 5, 'Library');
+        this.addBuilding(26, 2, 5, 5, 'Bank');
+        this.addBuilding(2, 12, 5, 5, 'Bakery');
+        this.addBuilding(8, 12, 5, 5, 'Police Station');
+        this.addBuilding(20, 12, 5, 5, 'Hospital');
+        this.addBuilding(26, 12, 5, 5, 'Mall');
+        // Add Park (Just an area) - placed in open space to the right of Bank
+        this.locations.push({
+            name: 'Park',
+            x: 35, y: 2, width: 5, height: 5,
+            entry: { x: 37, y: 7 },
+            type: 'public',
+            stats: { visits: 0, revenue: 0, transactions: [] }
+        });
+    }
+    addBuilding(x, y, w, h, name) {
+        for (let i = 0; i < h; i++) {
+            for (let j = 0; j < w; j++) {
+                if (i === 0 || i === h - 1 || j === 0 || j === w - 1) {
+                    this.grid[y + i][x + j] = 'wall';
+                }
+                else {
+                    this.grid[y + i][x + j] = 'floor';
+                }
+            }
+        }
+        // Add door
+        this.grid[y + h - 1][x + Math.floor(w / 2)] = 'floor';
+        this.locations.push({
+            name,
+            x, y,
+            entry: { x: x + Math.floor(w / 2), y: y + h - 1 }, // On the door tile
+            interior: { x: x + Math.floor(w / 2), y: y + Math.floor(h / 2) }, // Center of building
+            width: w,
+            height: h,
+            type: 'public', // simplified
+            stats: {
+                visits: 0,
+                revenue: 0,
+                transactions: [],
+                extra: name === 'Bank' ? { deposits: 0, withdrawals: 0, loans: 0 } :
+                    name === 'Police Station' ? { arrests: 0, bailCollected: 0 } : undefined
+            }
+        });
+    }
+    isWalkable(x, y) {
+        if (x < 0 || x >= this.width || y < 0 || y >= this.height)
+            return false;
+        const tile = this.grid[y][x];
+        return tile !== 'wall';
+    }
+    // Simple BFS for pathfinding (A* is better but BFS is fine for small grid)
+    findPath(start, end) {
+        const queue = [{ pos: start, path: [] }];
+        const visited = new Set();
+        visited.add(`${start.x},${start.y}`);
+        while (queue.length > 0) {
+            const { pos, path } = queue.shift();
+            if (pos.x === end.x && pos.y === end.y) {
+                return path;
+            }
+            const directions = [
+                { x: 0, y: -1 }, // Up
+                { x: 0, y: 1 }, // Down
+                { x: -1, y: 0 }, // Left
+                { x: 1, y: 0 }, // Right
+            ];
+            // Shuffle directions to make paths less predictable
+            for (let i = directions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [directions[i], directions[j]] = [directions[j], directions[i]];
+            }
+            for (const dir of directions) {
+                const nextX = pos.x + dir.x;
+                const nextY = pos.y + dir.y;
+                const key = `${nextX},${nextY}`;
+                if (this.isWalkable(nextX, nextY) && !visited.has(key)) {
+                    visited.add(key);
+                    queue.push({
+                        pos: { x: nextX, y: nextY },
+                        path: [...path, { x: nextX, y: nextY }],
+                    });
+                }
+            }
+        }
+        return null;
+    }
+}
