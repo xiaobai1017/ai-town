@@ -37,7 +37,9 @@ export function useGameLoop() {
     const stateRef = useRef<GameState>(gameState);
     const behaviorSystemRef = useRef<BehaviorSystem | null>(null);
     const dialogueSystemRef = useRef<DialogueSystem | null>(null);
-    const requestRef = useRef<number>(undefined);
+    // Simulation is timer-driven instead of RAF-driven. RAF is throttled or
+    // paused by browsers when the tab is in the background.
+    const requestRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
     const lastTimeRef = useRef<number>(0);
     const recordingRef = useRef<ReplayRecord | null>(null);
     const replayRef = useRef<{ frames: ReplayFrame[]; index: number } | null>(null);
@@ -89,12 +91,12 @@ export function useGameLoop() {
                     lastTimeRef.current = timestamp;
                 }
             }
-            requestRef.current = requestAnimationFrame(tick);
+            requestRef.current = setTimeout(() => tick(performance.now()), 50);
             return;
         }
         if (!stateRef.current.isRunning) {
             lastTimeRef.current = timestamp;
-            requestRef.current = requestAnimationFrame(tick);
+            requestRef.current = setTimeout(() => tick(performance.now()), 50);
             return;
         }
 
@@ -164,13 +166,13 @@ export function useGameLoop() {
             lastTimeRef.current = timestamp;
         }
 
-        requestRef.current = requestAnimationFrame(tick);
+        requestRef.current = setTimeout(() => tick(performance.now()), 50);
     }, [speed]);
 
     useEffect(() => {
-        requestRef.current = requestAnimationFrame(tick);
+        requestRef.current = setTimeout(() => tick(performance.now()), 50);
         return () => {
-            if (requestRef.current) cancelAnimationFrame(requestRef.current);
+            if (requestRef.current) clearTimeout(requestRef.current);
         };
     }, [tick]);
 

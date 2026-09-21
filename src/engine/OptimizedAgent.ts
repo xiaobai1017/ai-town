@@ -1,4 +1,5 @@
 import { Coordinate, World } from './World';
+import type { CharmEvent } from './Agent';
 
 export type AgentState = 'IDLE' | 'MOVING' | 'WORKING' | 'READING' | 'TALKING' | 'SLEEPING' | 'CRIMINAL' | 'ARRESTED' | 'EATING' | 'BANKING' | 'TREATING' | 'SHOPPING' | 'DEAD';
 
@@ -54,6 +55,7 @@ export class OptimizedAgent {
     deathTime?: number;
     livingTicks: number = 0;
     charm: number = 0; // 0-100, charm level from shopping and social status
+    charmHistory: CharmEvent[] = []; // Structurally required for Agent compatibility
     lastShoppingAmount: number = 0; // Track last shopping amount for charm calculation
     arrestTime?: number; // Time when agent was arrested
 

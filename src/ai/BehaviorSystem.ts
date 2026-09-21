@@ -123,8 +123,7 @@ export class BehaviorSystem {
                 if (hasPaid) {
                     if (locAt) {
                         locAt.stats.revenue += cost;
-                        if (!locAt.stats.sessionRevenue) locAt.stats.sessionRevenue = {};
-                        locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + cost;
+                        this.logBuildingTransaction(locAt, cost, `Food purchase from ${agent.name}`, time);
                     }
 
                     // Keep the exact venue in the ledger so Bakery purchases are
@@ -199,7 +198,7 @@ export class BehaviorSystem {
                     agent.sessionFinance.amount -= luxuryCost;
 
                     // Charm system: increase charm based on shopping amount
-                    agent.increaseCharm(luxuryCost);
+                    agent.increaseCharm(luxuryCost, time);
                     
                     if (Math.random() < 0.05) {
                         agent.state = 'IDLE';
@@ -245,8 +244,7 @@ export class BehaviorSystem {
                     const hospital = this.world.locations.find(l => l.name === 'Hospital');
                     if (hospital) {
                         hospital.stats.revenue += cost;
-                        if (!hospital.stats.sessionRevenue) hospital.stats.sessionRevenue = {};
-                        hospital.stats.sessionRevenue[agent.id] = (hospital.stats.sessionRevenue[agent.id] || 0) + cost;
+                        this.logBuildingTransaction(hospital, cost, `Treatment consumption from ${agent.name}`, time);
                     }
 
                     if (!agent.sessionFinance || agent.sessionFinance.description !== 'Hospital Treatment') {

@@ -226,7 +226,7 @@ export class OptimizedBehaviorSystem {
             if (hasPaid) {
                 // Preserve the concrete venue (including Bakery) in both the
                 // resident ledger and the building's revenue ledger.
-                this._handlePaymentAtLocation(locAt, agent, cost, 'Food');
+                this._handlePaymentAtLocation(locAt, agent, cost, 'Food', time);
             }
 
             if (agent.getTotalWealth() < cost) {
@@ -326,8 +326,7 @@ export class OptimizedBehaviorSystem {
                 const hospital = this.cachedLocations.get('Hospital');
                 if (hospital) {
                     hospital.stats.revenue += cost;
-                    if (!hospital.stats.sessionRevenue) hospital.stats.sessionRevenue = {};
-                    hospital.stats.sessionRevenue[agent.id] = (hospital.stats.sessionRevenue[agent.id] || 0) + cost;
+                    this._logBuildingTransaction(hospital, cost, `Treatment consumption from ${agent.name}`, time);
                 }
 
                 if (!agent.sessionFinance || agent.sessionFinance.description !== 'Hospital Treatment') {
@@ -350,10 +349,7 @@ export class OptimizedBehaviorSystem {
             if (agent.sessionFinance && agent.sessionFinance.description === 'Hospital Treatment') {
                 this._finalizeExpenseSession(agent, agent.sessionFinance, 'expense', time);
                 const hospital = this.cachedLocations.get('Hospital');
-                if (hospital && hospital.stats.sessionRevenue && hospital.stats.sessionRevenue[agent.id]) {
-                this._logBuildingTransaction(hospital, hospital.stats.sessionRevenue[agent.id], `Treatment consumption from ${agent.name}`, time);
-                    delete hospital.stats.sessionRevenue[agent.id];
-                }
+                if (hospital?.stats.sessionRevenue) delete hospital.stats.sessionRevenue[agent.id];
                 agent.sessionFinance = undefined;
             }
         }
@@ -767,11 +763,11 @@ export class OptimizedBehaviorSystem {
         );
     }
     
-    private _handlePaymentAtLocation(location: Location | undefined, agent: OptimizedAgent, cost: number, purpose: string) {
+    private _handlePaymentAtLocation(location: Location | undefined, agent: OptimizedAgent, cost: number, purpose: string, time: number) {
         if (location) {
             location.stats.revenue += cost;
-            if (!location.stats.sessionRevenue) location.stats.sessionRevenue = {};
-            location.stats.sessionRevenue[agent.id] = (location.stats.sessionRevenue[agent.id] || 0) + cost;
+            const description = purpose === 'Food' ? `Food purchase from ${agent.name}` : `${purpose} consumption from ${agent.name}`;
+            this._logBuildingTransaction(location, cost, description, time);
         }
 
         if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || !agent.sessionFinance.description.startsWith(purpose)) {

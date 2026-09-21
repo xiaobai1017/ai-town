@@ -25,6 +25,19 @@ export interface JevIntent {
     status: 'thinking' | 'planned' | 'fallback';
 }
 
+export interface CharmEvent {
+    source: 'shopping' | 'library';
+    description: string;
+    spent: number; // Money spent during the session (shopping only)
+    baseGain: number; // Charm gained from the activity itself
+    friendBonus: number; // Charm gained from friend bonus
+    gain: number; // Total charm actually applied (baseGain + friendBonus, capped at 100)
+    charmBefore: number;
+    charmAfter: number;
+    timestamp: number; // Game minute when the session started
+    lastTimestamp: number; // Game minute of the latest gain in the session
+}
+
 export class Agent {
     id: string;
     name: string;
@@ -57,6 +70,8 @@ export class Agent {
     deathTime?: number;
     livingTicks: number = 0;
     charm: number = 0; // 0-100, charm level from shopping and social status
+    /** Charm gain history, newest session first (capped). */
+    charmHistory: CharmEvent[] = [];
     /** Latest JEV plan, shown in the resident inspector. */
     jevIntent?: JevIntent;
     lastShoppingAmount: number = 0; // Track last shopping amount for charm calculation
@@ -162,24 +177,86 @@ export class Agent {
     }
 
     // Increase charm based on shopping amount and number of friends
-    increaseCharm(shoppingAmount: number) {
+    increaseCharm(shoppingAmount: number, timestamp: number = 0) {
         const charmPer5Units = 1; // 1 charm per $5.00 spent
         const baseCharmGain = Math.min(10, Math.max(1, Math.floor(shoppingAmount / 5) * charmPer5Units));
-        
+
         // Calculate number of friends (relationships >= 50)
         const friendCount = Object.values(this.relationships).filter(intimacy => intimacy >= 50).length;
-        
+
         // Additional charm gain from friends
-        const friendBonus = Math.min(5, friendCount); // Maximum 5 bonus charm from friends
-        
-        const totalCharmGain = baseCharmGain + friendBonus;
-        this.charm = Math.min(100, Math.round((this.charm + totalCharmGain) * 100) / 100);
+        const friendBonusNominal = Math.min(5, friendCount); // Maximum 5 bonus charm from friends
+
+        // Respect the 100 cap so the ledger reflects what was actually applied
+        const charmBefore = this.charm;
+        const remaining = 100 - charmBefore;
+        const appliedBase = Math.min(baseCharmGain, remaining);
+        const appliedFriend = Math.min(friendBonusNominal, Math.max(0, remaining - appliedBase));
+        const appliedTotal = Math.round((appliedBase + appliedFriend) * 100) / 100;
+
+        this.charm = Math.min(100, Math.round((charmBefore + baseCharmGain + friendBonusNominal) * 100) / 100);
         this.lastShoppingAmount = shoppingAmount;
+
+        pushCharmEvent(this.charmHistory, {
+            source: 'shopping',
+            description: 'Luxury Shopping',
+            spent: shoppingAmount,
+            baseGain: appliedBase,
+            friendBonus: appliedFriend,
+            gain: appliedTotal,
+            charmBefore,
+            charmAfter: this.charm,
+            timestamp
+        });
     }
 
     /** Low-cost charm growth from reading at the Library. */
-    increaseLibraryCharm(amount: number = 0.03) {
-        this.charm = Math.min(100, Math.round((this.charm + amount) * 100) / 100);
+    increaseLibraryCharm(amount: number = 0.03, timestamp: number = 0) {
+        const charmBefore = this.charm;
+        const applied = Math.round(Math.min(amount, 100 - charmBefore) * 100) / 100;
+        this.charm = Math.min(100, Math.round((charmBefore + amount) * 100) / 100);
         this.lastShoppingAmount = 0;
+
+        pushCharmEvent(this.charmHistory, {
+            source: 'library',
+            description: 'Library Reading',
+            spent: 0,
+            baseGain: applied,
+            friendBonus: 0,
+            gain: applied,
+            charmBefore,
+            charmAfter: this.charm,
+            timestamp
+        });
+    }
+}
+
+/**
+ * Append a charm gain, merging it into the latest entry when it belongs to
+ * the same continuous activity session (gains fire every game tick).
+ */
+function pushCharmEvent(history: CharmEvent[], event: Omit<CharmEvent, 'lastTimestamp'>) {
+    if (event.gain <= 0) return;
+
+    const SESSION_GAP_MINUTES = 30;
+    const last = history[0];
+    if (
+        last &&
+        last.source === event.source &&
+        event.timestamp >= last.timestamp &&
+        event.timestamp - last.lastTimestamp <= SESSION_GAP_MINUTES
+    ) {
+        last.spent = Math.round((last.spent + event.spent) * 100) / 100;
+        last.baseGain = Math.round((last.baseGain + event.baseGain) * 100) / 100;
+        last.friendBonus = Math.round((last.friendBonus + event.friendBonus) * 100) / 100;
+        last.gain = Math.round((event.charmAfter - last.charmBefore) * 100) / 100;
+        last.charmAfter = event.charmAfter;
+        last.lastTimestamp = event.timestamp;
+        return;
+    }
+
+    history.unshift({ ...event, lastTimestamp: event.timestamp });
+    if (history.length > 50) {
+        history.pop();
     }
 }

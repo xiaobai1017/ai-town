@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Agent } from '@/engine/Agent';
-import { X, Landmark, History, ChevronRight, ChevronDown, PlusCircle, MinusCircle } from 'lucide-react';
+import { X, Landmark, History, ChevronRight, ChevronDown, PlusCircle, MinusCircle, Sparkles } from 'lucide-react';
 
 interface AgentPanelProps {
     agent: Agent | null;
@@ -12,7 +12,16 @@ interface AgentPanelProps {
 
 export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPanelProps) {
     const [showFinHistory, setShowFinHistory] = React.useState(false);
+    const [showCharmHistory, setShowCharmHistory] = React.useState(false);
     if (!agent) return null;
+
+    // Format game minutes as "Day N HH:MM"
+    const formatGameTime = (minutes: number): string => {
+        const day = Math.floor(minutes / (24 * 60)) + 1;
+        const hour = Math.floor((minutes % (24 * 60)) / 60);
+        const min = minutes % 60;
+        return `Day ${day} ${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+    };
 
     const relationshipEntries = Object.entries(agent.relationships)
         .sort(([, a], [, b]) => b - a)
@@ -114,7 +123,16 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                 </div>
 
                 <div>
-                    <span className="font-semibold text-slate-500 text-sm">Charm</span>
+                    <div className="flex justify-between items-center">
+                        <span className="font-semibold text-slate-500 text-sm">Charm</span>
+                        <button
+                            onClick={() => setShowCharmHistory(!showCharmHistory)}
+                            className="text-xs flex items-center gap-1 text-purple-600 font-bold hover:underline"
+                        >
+                            <Sparkles size={14} />
+                            {showCharmHistory ? 'Hide Ledger' : 'View Ledger'}
+                        </button>
+                    </div>
                     <div className="w-full bg-slate-100 rounded-full h-2 mt-1">
                         <div
                             className={`h-full rounded-full transition-all bg-purple-500`}
@@ -125,6 +143,37 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                         <span className="text-xs text-slate-400">Social Status</span>
                         <span className="text-xs font-bold text-purple-600">{agent.charm.toFixed(2).replace(/\.00$/, '')}/100</span>
                     </div>
+
+                    {showCharmHistory && (
+                        <div className="bg-slate-900 text-slate-300 p-4 rounded-xl space-y-2 mt-2 max-h-60 overflow-y-auto border border-slate-700 font-mono text-[11px] animate-in slide-in-from-top duration-200">
+                            <h3 className="text-[10px] uppercase font-black text-purple-400 border-b border-slate-800 pb-1 mb-2 tracking-widest">Charm Ledger</h3>
+                            {agent.charmHistory.length === 0 ? (
+                                <p className="text-slate-600 italic">No charm gains recorded yet. Go shopping or read at the Library!</p>
+                            ) : (
+                                agent.charmHistory.map((e, i) => (
+                                    <div key={i} className="flex justify-between items-start gap-2 border-b border-slate-800/50 pb-1 last:border-0 text-left">
+                                        <div className="flex-1">
+                                            <p className="text-slate-100 font-bold">
+                                                {e.source === 'shopping' ? '🛍️' : '📖'} {e.description}
+                                            </p>
+                                            <p className="text-slate-500 text-[10px]">
+                                                {formatGameTime(e.timestamp)}
+                                                {e.lastTimestamp > e.timestamp ? ` – ${formatGameTime(e.lastTimestamp).split(' ').slice(1).join(' ')}` : ''}
+                                            </p>
+                                            <p className="text-slate-400 text-[10px]">
+                                                +{e.baseGain.toFixed(2)} base{` · `}+{e.friendBonus.toFixed(2)} friends
+                                                {e.spent > 0 && ` · spent $${e.spent.toFixed(2)}`}
+                                            </p>
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-purple-400 font-black">+{e.gain.toFixed(2)}</p>
+                                            <p className="text-slate-500 text-[10px]">→ {e.charmAfter.toFixed(2)}</p>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 <div className="space-y-3">
