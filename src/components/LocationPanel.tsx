@@ -56,7 +56,9 @@ export function LocationPanel({ location, onClose }: LocationPanelProps) {
 
                         {showHistory && (
                             <div className="bg-slate-900 text-slate-300 p-4 rounded-xl space-y-2 max-h-48 overflow-y-auto border border-slate-700 font-mono text-[10px] animate-in slide-in-from-top duration-200 shadow-inner">
-                                <h3 className="text-[9px] uppercase font-black text-slate-500 border-b border-slate-800 pb-1 mb-2 tracking-widest">Revenue Ledger</h3>
+                                <h3 className="text-[9px] uppercase font-black text-slate-500 border-b border-slate-800 pb-1 mb-2 tracking-widest">
+                                    {location.name === 'Bakery' || location.name === 'Hospital' ? 'Consumption Ledger' : 'Revenue Ledger'}
+                                </h3>
                                 {location.stats.transactions.length === 0 ? (
                                     <p className="text-slate-600 italic">No transaction records found.</p>
                                 ) : (

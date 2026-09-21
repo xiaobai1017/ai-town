@@ -48,6 +48,8 @@ export class Agent {
     description: string;
     lastSentiment: 'POS' | 'NEG' | 'NEU' | null = null;
     blockedTicks: number = 0; // Tracking how long we have been stuck
+    /** State to enter after reaching a planned destination. */
+    arrivalState?: AgentState;
     transactions: Transaction[] = []; // Financial history
     sessionFinance?: { amount: number, description: string, type: 'income' | 'expense' | 'bank' | 'loan' };
     sessionLoan?: number; // Aggregating loan repayments during work
@@ -138,8 +140,9 @@ export class Agent {
             this.path.shift();
             this.position = nextStep;
         } else {
-            this.state = 'IDLE';
+            this.state = this.arrivalState || 'IDLE';
             this.targetPosition = null;
+            this.arrivalState = undefined;
         }
     }
 
@@ -147,6 +150,7 @@ export class Agent {
         this.path = [];
         this.targetPosition = null;
         this.state = 'IDLE';
+        this.arrivalState = undefined;
     }
 
     logTransaction(amount: number, description: string, type: 'income' | 'expense' | 'bank' | 'loan' | 'criminal', timestamp: number) {

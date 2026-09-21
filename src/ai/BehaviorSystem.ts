@@ -160,7 +160,7 @@ export class BehaviorSystem {
                     if (lastLocName && lastLocName !== 'Local Area') {
                         const building = this.world.locations.find(l => l.name === lastLocName);
                         if (building && building.stats.sessionRevenue && building.stats.sessionRevenue[agent.id]) {
-                            this.logBuildingTransaction(building, building.stats.sessionRevenue[agent.id], `Sales to ${agent.name}`, time);
+                            this.logBuildingTransaction(building, building.stats.sessionRevenue[agent.id], `Food purchase from ${agent.name}`, time);
                             delete building.stats.sessionRevenue[agent.id];
                         }
                     }
@@ -269,7 +269,7 @@ export class BehaviorSystem {
                     agent.logTransaction(agent.sessionFinance.amount, agent.sessionFinance.description, 'expense', time);
                     const hospital = this.world.locations.find(l => l.name === 'Hospital');
                     if (hospital && hospital.stats.sessionRevenue && hospital.stats.sessionRevenue[agent.id]) {
-                        this.logBuildingTransaction(hospital, hospital.stats.sessionRevenue[agent.id], `Treatment fee from ${agent.name}`, time);
+                        this.logBuildingTransaction(hospital, hospital.stats.sessionRevenue[agent.id], `Treatment consumption from ${agent.name}`, time);
                         delete hospital.stats.sessionRevenue[agent.id];
                     }
                     agent.sessionFinance = undefined;
@@ -480,14 +480,9 @@ export class BehaviorSystem {
             const bakeryCost = 0.03 * this.priceMultiplier;
             const homeCost = 0.01 * this.priceMultiplier;
 
-            if (finances.liquidFunds >= restaurantCost) {
-                this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING', allAgents);
-                return;
-            } else if (finances.liquidFunds >= bakeryCost) {
-                this.ensureAtLocation(agent, agentIndex, 'Bakery', 'EATING', allAgents);
-                return;
-            } else if (finances.liquidFunds >= homeCost) {
-                this.ensureAtLocation(agent, agentIndex, 'My House', 'EATING', allAgents);
+            const foodLocation = this.getAvailableFoodLocation(agent, allAgents, finances.liquidFunds, restaurantCost, bakeryCost, homeCost);
+            if (foodLocation) {
+                this.ensureAtLocation(agent, agentIndex, foodLocation, 'EATING', allAgents);
                 return;
             } else if (isBankOpen && (agent.bankBalance >= (5 * this.priceMultiplier) || agent.loanBalance < 200)) {
                 // Last resort: If too poor for any food, MUST go to bank for a loan
@@ -618,13 +613,46 @@ export class BehaviorSystem {
         };
         if (action.type === 'WANDER') return this.wander(agent);
         if (action.type === 'WAIT') return;
-        const destination = destinations[action.type];
+        let destination = destinations[action.type];
+        if (action.type === 'EAT') {
+            const finances = planFinances(agent, this.priceMultiplier, Math.floor(time / 60) % 24);
+            const food = this.getAvailableFoodLocation(agent, allAgents, finances.liquidFunds, 0.05 * this.priceMultiplier, 0.03 * this.priceMultiplier, 0.01 * this.priceMultiplier);
+            if (!food) {
+                agent.jevIntent = { type: 'LOCAL_RULE', reason: '餐厅和面包房暂时拥挤，等待可用座位。', time, status: 'fallback' };
+                return;
+            }
+            destination = [food, 'EATING'];
+        }
         if (!destination || !this.world.locations.some(location => location.name === destination[0])) return;
         this.ensureAtLocation(agent, agentIndex, destination[0], destination[1], allAgents);
+        if (agent.state === 'IDLE' && !this.isAt(agent, this.world.locations.find(location => location.name === destination[0])!.entry)) {
+            // Path creation failed; keep the decision visible but allow a later retry.
+            agent.jevIntent = { ...agent.jevIntent, reason: `${action.reason || ''} 正在重新规划路线。`, status: 'fallback' };
+        }
         if (action.reason) {
             agent.conversation = action.reason;
             agent.conversationTTL = 30;
         }
+    }
+
+    private hasAvailableSlot(locationName: string, allAgents: Agent[]): boolean {
+        const location = this.world.locations.find(item => item.name === locationName);
+        if (!location || !location.interior || !location.width || !location.height) return true;
+        const capacity = Math.max(1, (location.width - 2) * (location.height - 2));
+        const occupants = allAgents.filter(other => {
+            const at = other.position;
+            const target = other.targetPosition;
+            const inside = (point: { x: number; y: number }) => point.x >= location.x! + 1 && point.x < location.x! + location.width! - 1 && point.y >= location.y! + 1 && point.y < location.y! + location.height! - 1;
+            return inside(at) || Boolean(target && inside(target));
+        }).length;
+        return occupants < capacity;
+    }
+
+    private getAvailableFoodLocation(agent: Agent, allAgents: Agent[], funds: number, restaurantCost: number, bakeryCost: number, homeCost: number): string | null {
+        if (funds >= restaurantCost && this.hasAvailableSlot('Restaurant', allAgents)) return 'Restaurant';
+        if (funds >= bakeryCost && this.hasAvailableSlot('Bakery', allAgents)) return 'Bakery';
+        if (funds >= homeCost && this.hasAvailableSlot('My House', allAgents)) return 'My House';
+        return null;
     }
 
     getWorkLocation(agent: Agent): string {
@@ -663,6 +691,19 @@ export class BehaviorSystem {
             || this.world.locations[0];
 
         if (!location) return;
+        // Do not replace a live path with a new random interior target every tick.
+        // Re-targeting was causing JEV-planned residents to appear frozen.
+        if (agent.state === 'MOVING' && agent.targetPosition) return;
+        const alreadyInside = location.x !== undefined && location.y !== undefined && location.width !== undefined && location.height !== undefined &&
+            agent.position.x >= location.x + 1 && agent.position.x < location.x + location.width - 1 &&
+            agent.position.y >= location.y + 1 && agent.position.y < location.y + location.height - 1;
+        if (!alreadyInside && !this.hasAvailableSlot(location.name, allAgents)) {
+            agent.state = 'IDLE';
+            agent.arrivalState = undefined;
+            agent.conversation = `${location.name} is full. I'll try another place.`;
+            agent.conversationTTL = 25;
+            return;
+        }
 
         let target = location.interior || location.entry;
 
@@ -707,6 +748,7 @@ export class BehaviorSystem {
         if (this.isAt(agent, target)) {
             agent.state = desiredState;
         } else {
+            agent.arrivalState = desiredState;
             agent.moveTo(target, this.world);
         }
     }

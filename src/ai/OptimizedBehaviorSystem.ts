@@ -351,7 +351,7 @@ export class OptimizedBehaviorSystem {
                 this._finalizeExpenseSession(agent, agent.sessionFinance, 'expense', time);
                 const hospital = this.cachedLocations.get('Hospital');
                 if (hospital && hospital.stats.sessionRevenue && hospital.stats.sessionRevenue[agent.id]) {
-                    this._logBuildingTransaction(hospital, hospital.stats.sessionRevenue[agent.id], `Treatment fee from ${agent.name}`, time);
+                this._logBuildingTransaction(hospital, hospital.stats.sessionRevenue[agent.id], `Treatment consumption from ${agent.name}`, time);
                     delete hospital.stats.sessionRevenue[agent.id];
                 }
                 agent.sessionFinance = undefined;
@@ -788,7 +788,12 @@ export class OptimizedBehaviorSystem {
         if (lastLocName && lastLocName !== 'Local Area') {
             const building = this.cachedLocations.get(lastLocName);
             if (building && building.stats.sessionRevenue && building.stats.sessionRevenue[agent.id]) {
-                this._logBuildingTransaction(building, building.stats.sessionRevenue[agent.id], `Sales to ${agent.name}`, time);
+                const detail = session.description.startsWith('Food')
+                    ? `Food purchase from ${agent.name}`
+                    : session.description === 'Hospital Treatment'
+                        ? `Treatment consumption from ${agent.name}`
+                        : `Sales to ${agent.name}`;
+                this._logBuildingTransaction(building, building.stats.sessionRevenue[agent.id], detail, time);
                 delete building.stats.sessionRevenue[agent.id];
             }
         }
