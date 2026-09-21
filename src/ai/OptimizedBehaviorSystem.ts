@@ -224,6 +224,8 @@ export class OptimizedBehaviorSystem {
             }
 
             if (hasPaid) {
+                // Preserve the concrete venue (including Bakery) in both the
+                // resident ledger and the building's revenue ledger.
                 this._handlePaymentAtLocation(locAt, agent, cost, 'Food');
             }
 
@@ -392,6 +394,19 @@ export class OptimizedBehaviorSystem {
                     this._logBuildingTransaction(bank, -amount, `Regular Withdrawal by ${agent.name}`, time);
                     if (bank.stats.extra) bank.stats.extra.withdrawals += amount;
                     agent.conversation = "Withdrew some cash for future needs.";
+                } else {
+                    // Deposit surplus cash while preserving a small operating reserve.
+                    const depositReserve = Math.max(1, CONSTANTS.MIN_DEPOSIT_THRESHOLD_NORMAL * this.priceMultiplier);
+                    const depositAmount = Math.max(0, Math.floor((agent.cash - depositReserve) * 100) / 100);
+                    if (depositAmount >= 1) {
+                        agent.cash -= depositAmount;
+                        agent.bankBalance += depositAmount;
+                        agent.logTransaction(-depositAmount, "Deposit to Savings", 'bank', time);
+                        this._logBuildingTransaction(bank, depositAmount, `Deposit from ${agent.name}`, time);
+                        if (!bank.stats.extra) bank.stats.extra = { deposits: 0, withdrawals: 0, loans: 0 };
+                        bank.stats.extra.deposits = (bank.stats.extra.deposits || 0) + depositAmount;
+                        agent.conversation = `Deposited $${depositAmount.toFixed(2)} for a safer future.`;
+                    }
                 }
                 agent.state = 'IDLE';
                 agent.conversationTTL = 50;
@@ -593,7 +608,8 @@ export class OptimizedBehaviorSystem {
         }
 
         // 财务管理：只有在富裕时才存款以减少频率
-        const depositChance = isWealthy ? 0.05 : 0.001;
+        // Saving is a deterministic financial rule, not a rare random event.
+        const depositChance = 1;
         const depositThreshold = isWealthy ? CONSTANTS.MIN_DEPOSIT_THRESHOLD_WEALTHY : CONSTANTS.MIN_DEPOSIT_THRESHOLD_NORMAL;
 
         if (isBankOpen && agent.cash >= depositThreshold && agent.hunger < 20 && agent.health > 90 &&

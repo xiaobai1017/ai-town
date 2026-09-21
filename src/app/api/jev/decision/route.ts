@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     const result = await client.systemOne({
       state: context,
       questions: {
-        action: choice('Choose one available candidate. Hard constraint: keep health at or above objective.healthFloor and hunger at or below objective.hungerCeiling. Subject to that constraint, maximize charm as quickly as possible; use SHOP when it is available and safe.', criteria)
+        action: choice('Choose one available candidate. Hard constraints: keep health at or above objective.healthFloor, hunger at or below objective.hungerCeiling, and never spend objective.safeReserve. If objective.disposableFunds is negative, prefer WORK or BANK over charm activities. Otherwise maximize charm as quickly as possible; use SHOP when available and safe.', criteria)
       }
     });
     const type = result.answers.action.choice;

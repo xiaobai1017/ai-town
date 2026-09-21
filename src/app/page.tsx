@@ -10,10 +10,10 @@ import { LocationPanel } from "@/components/LocationPanel";
 import { useState } from "react";
 import { Agent } from "@/engine/Agent";
 import { Location as TownLocation } from "@/engine/World";
-import { Play, Pause, FastForward, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert } from "lucide-react";
+import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, RotateCcw, Square } from "lucide-react";
 
 export default function Home() {
-  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled } = useGameLoop();
+  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, replayAvailable, startReplay, stopReplay } = useGameLoop();
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<TownLocation | null>(null);
   const [historyPair, setHistoryPair] = useState<[Agent, Agent] | null>(null);
@@ -51,11 +51,20 @@ export default function Home() {
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
             <button
-              onClick={togglePause}
+              onClick={gameState.isReplaying ? stopReplay : togglePause}
               className={`p-2 rounded hover:shadow-sm transition ${gameState.isRunning ? 'bg-white text-indigo-600' : 'bg-indigo-600 text-white'}`}
             >
               {gameState.isRunning ? <Pause size={20} /> : <Play size={20} />}
             </button>
+            {gameState.isReplaying ? (
+              <button onClick={stopReplay} title="Stop replay" className="p-2 rounded hover:shadow-sm text-rose-600">
+                <Square size={18} />
+              </button>
+            ) : (
+              <button onClick={startReplay} disabled={!replayAvailable} title="Replay latest simulation" className="p-2 rounded hover:shadow-sm disabled:opacity-30 text-purple-600">
+                <RotateCcw size={18} />
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-100 p-1 rounded-lg">

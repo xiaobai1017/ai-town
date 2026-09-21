@@ -1,5 +1,6 @@
 import { Agent, AgentState } from '../engine/Agent';
 import { World } from '../engine/World';
+import { planFinances } from './FinancialPlanner';
 
 export type JevActionType = 'WORK' | 'EAT' | 'SLEEP' | 'SHOP' | 'LIBRARY' | 'TREAT' | 'BANK' | 'WANDER' | 'WAIT';
 
@@ -24,6 +25,8 @@ export interface JevDecisionContext {
     hungerCeiling: number;
     charmTarget: number;
     priority: 'health_then_charm';
+    safeReserve: number;
+    disposableFunds: number;
   };
   candidates: JevAction[];
 }
@@ -38,8 +41,9 @@ export function buildJevContext(agent: Agent, world: World, time: number, priceM
 
   const healthFloor = 80;
   const hungerCeiling = 35;
+  const finances = planFinances(agent, priceMultiplier, Math.floor(time / 60) % 24);
   const canPursueCharmSafely = agent.health >= healthFloor && agent.hunger <= hungerCeiling &&
-    (agent.cash + agent.bankBalance) >= 5 * priceMultiplier && agent.charm < 100;
+    finances.canShop && agent.charm < 100;
   const canReadSafely = agent.health >= healthFloor && agent.hunger <= hungerCeiling && agent.charm < 100;
 
   const candidates: JevAction[] = [
@@ -62,7 +66,7 @@ export function buildJevContext(agent: Agent, world: World, time: number, priceM
       charm: agent.charm, memory: agent.memory
     },
     world: { time, hour: Math.floor(time / 60) % 24, priceMultiplier, wageMultiplier, riskMultiplier, locations },
-    objective: { healthFloor, hungerCeiling, charmTarget: 100, priority: 'health_then_charm' },
+    objective: { healthFloor, hungerCeiling, charmTarget: 100, priority: 'health_then_charm', safeReserve: finances.safeReserve, disposableFunds: finances.disposableFunds },
     candidates
   };
 }

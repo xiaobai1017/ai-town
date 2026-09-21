@@ -5,6 +5,7 @@ import { Agent } from '@/engine/Agent';
 import { BehaviorSystem } from '@/ai/BehaviorSystem';
 import { DialogueSystem, DialoguePacket } from '@/ai/DialogueSystem';
 import { initializeWorld } from '@/data/townScript';
+import { clearReplay, loadReplay, makeReplayFrame, restoreFrame, saveReplay, ReplayRecord, ReplayFrame } from '@/replay/SimulationReplay';
 
 export interface GameState {
     world: World | null;
@@ -16,6 +17,7 @@ export interface GameState {
     wageLevel: number;
     riskLevel: number;
     jevEnabled: boolean;
+    isReplaying: boolean;
 }
 
 export function useGameLoop() {
@@ -28,7 +30,8 @@ export function useGameLoop() {
         priceLevel: 1.0,
         wageLevel: 1.0,
         riskLevel: 1.0
-        ,jevEnabled: false
+        ,jevEnabled: false,
+        isReplaying: false
     });
 
     const stateRef = useRef<GameState>(gameState);
@@ -36,12 +39,16 @@ export function useGameLoop() {
     const dialogueSystemRef = useRef<DialogueSystem | null>(null);
     const requestRef = useRef<number>(undefined);
     const lastTimeRef = useRef<number>(0);
+    const recordingRef = useRef<ReplayRecord | null>(null);
+    const replayRef = useRef<{ frames: ReplayFrame[]; index: number } | null>(null);
+    const [replayAvailable, setReplayAvailable] = useState(false);
 
     // Speed factor: 1 real second = X game minutes
     const [speed, setSpeed] = useState(1);
 
     useEffect(() => {
         // Initialize
+        setReplayAvailable(Boolean(loadReplay()));
         const { world, agents } = initializeWorld();
         const behaviorSystem = new BehaviorSystem(world);
         const dialogueSystem = new DialogueSystem();
@@ -55,7 +62,8 @@ export function useGameLoop() {
             priceLevel: 1.0,
             wageLevel: 1.0,
             riskLevel: 1.0
-            ,jevEnabled: false
+            ,jevEnabled: false,
+            isReplaying: false
         };
 
         setGameState(initialState);
@@ -65,6 +73,25 @@ export function useGameLoop() {
     }, []);
 
     const tick = useCallback((timestamp: number) => {
+        if (replayRef.current) {
+            if (timestamp - lastTimeRef.current >= 100) {
+                const replay = replayRef.current;
+                replay.index += 1;
+                if (replay.index >= replay.frames.length) {
+                    replayRef.current = null;
+                    stateRef.current = { ...stateRef.current, isRunning: false, isReplaying: false };
+                    setGameState({ ...stateRef.current });
+                } else {
+                    const frame = restoreFrame(replay.frames[replay.index]);
+                    const nextState = { ...frame, isRunning: false, isReplaying: true };
+                    stateRef.current = nextState;
+                    setGameState(nextState);
+                    lastTimeRef.current = timestamp;
+                }
+            }
+            requestRef.current = requestAnimationFrame(tick);
+            return;
+        }
         if (!stateRef.current.isRunning) {
             lastTimeRef.current = timestamp;
             requestRef.current = requestAnimationFrame(tick);
@@ -123,6 +150,15 @@ export function useGameLoop() {
                 dialogueLog: [...(dialogueSystemRef.current?.dialogueLog || [])]
             };
 
+            if (recordingRef.current && newTime % 5 === 0) {
+                recordingRef.current.frames.push(makeReplayFrame({ ...newState, world, agents: currentState.agents }));
+                if (recordingRef.current.frames.length > 240) {
+                    recordingRef.current.frames.splice(0, recordingRef.current.frames.length - 240);
+                }
+                saveReplay(recordingRef.current);
+                setReplayAvailable(true);
+            }
+
             stateRef.current = newState;
             setGameState({ ...newState }); // Trigger render
             lastTimeRef.current = timestamp;
@@ -139,8 +175,32 @@ export function useGameLoop() {
     }, [tick]);
 
     const togglePause = () => {
+        if (!stateRef.current.isRunning && !stateRef.current.isReplaying && !recordingRef.current && stateRef.current.world) {
+            clearReplay();
+            const initialFrame = makeReplayFrame({ ...stateRef.current, world: stateRef.current.world!, agents: stateRef.current.agents });
+            recordingRef.current = { version: 1, createdAt: new Date().toISOString(), frames: [initialFrame] };
+            saveReplay(recordingRef.current);
+            setReplayAvailable(true);
+        }
         stateRef.current.isRunning = !stateRef.current.isRunning;
         setGameState(prev => ({ ...prev, isRunning: !prev.isRunning }));
+    };
+
+    const startReplay = () => {
+        const record = loadReplay();
+        if (!record) return;
+        replayRef.current = { frames: record.frames, index: 0 };
+        const frame = restoreFrame(record.frames[0]);
+        const nextState = { ...frame, isRunning: false, isReplaying: true };
+        stateRef.current = nextState;
+        setGameState(nextState);
+        lastTimeRef.current = performance.now();
+    };
+
+    const stopReplay = () => {
+        replayRef.current = null;
+        stateRef.current.isReplaying = false;
+        setGameState(prev => ({ ...prev, isReplaying: false }));
     };
 
     const addAgent = () => {
@@ -228,6 +288,9 @@ export function useGameLoop() {
         setPriceLevel,
         setWageLevel,
         setRiskLevel
-        ,setJevEnabled
+        ,setJevEnabled,
+        replayAvailable,
+        startReplay,
+        stopReplay
     };
 }

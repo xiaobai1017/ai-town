@@ -2,6 +2,7 @@
 import { Agent, AgentState } from '../engine/Agent';
 import { World, Location } from '../engine/World';
 import { buildJevContext, requestJevDecision, JevAction } from './JevDecisionProvider';
+import { planFinances } from './FinancialPlanner';
 
 export class BehaviorSystem {
     world: World;
@@ -126,7 +127,10 @@ export class BehaviorSystem {
                         locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + cost;
                     }
 
-                    if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || !agent.sessionFinance.description.startsWith('Food')) {
+                    // Keep the exact venue in the ledger so Bakery purchases are
+                    // recorded separately from Restaurant and home meals.
+                    const foodVenue = locAt?.name || 'Local Area';
+                    if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || agent.sessionFinance.description !== `Food at ${foodVenue}`) {
                         agent.sessionFinance = { amount: 0, description: `Food at ${locAt?.name || 'Local Area'}`, type: 'expense' };
                     }
                     agent.sessionFinance.amount -= cost;
@@ -393,6 +397,20 @@ export class BehaviorSystem {
                         if (!bank.stats.extra) bank.stats.extra = { deposits: 0, withdrawals: 0, loans: 0 };
                         bank.stats.extra.withdrawals += amount;
                         agent.conversation = "Withdrew some cash for future needs.";
+                    } else {
+                        // Deposit surplus cash while preserving the financial safety reserve.
+                        const hour = Math.floor(time / 60) % 24;
+                        const finances = planFinances(agent, this.priceMultiplier, hour);
+                        const depositAmount = Math.max(0, Math.floor((agent.cash - finances.safeReserve) * 100) / 100);
+                        if (depositAmount >= 1) {
+                            agent.cash -= depositAmount;
+                            agent.bankBalance += depositAmount;
+                            agent.logTransaction(-depositAmount, "Deposit to Savings", 'bank', time);
+                            this.logBuildingTransaction(bank, depositAmount, `Deposit from ${agent.name}`, time);
+                            if (!bank.stats.extra) bank.stats.extra = { deposits: 0, withdrawals: 0, loans: 0 };
+                            bank.stats.extra.deposits = (bank.stats.extra.deposits || 0) + depositAmount;
+                            agent.conversation = `Deposited $${depositAmount.toFixed(2)} for a safer future.`;
+                        }
                     }
                     agent.state = 'IDLE';
                     agent.conversationTTL = 50;
@@ -419,6 +437,7 @@ export class BehaviorSystem {
 
         const hour = Math.floor(time / 60) % 24;
         const isBankOpen = hour >= 9 && hour < 18;
+        const finances = planFinances(agent, this.priceMultiplier, hour);
 
         // JEV only handles ordinary decisions. Safety-critical rules below remain local.
         if (this.jevEnabled && agent.state === 'IDLE' && agent.health >= 80 && agent.hunger <= 35 &&
@@ -461,13 +480,13 @@ export class BehaviorSystem {
             const bakeryCost = 0.03 * this.priceMultiplier;
             const homeCost = 0.01 * this.priceMultiplier;
 
-            if (totalWealth >= restaurantCost) {
+            if (finances.liquidFunds >= restaurantCost) {
                 this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING', allAgents);
                 return;
-            } else if (totalWealth >= bakeryCost) {
+            } else if (finances.liquidFunds >= bakeryCost) {
                 this.ensureAtLocation(agent, agentIndex, 'Bakery', 'EATING', allAgents);
                 return;
-            } else if (totalWealth >= homeCost) {
+            } else if (finances.liquidFunds >= homeCost) {
                 this.ensureAtLocation(agent, agentIndex, 'My House', 'EATING', allAgents);
                 return;
             } else if (isBankOpen && (agent.bankBalance >= (5 * this.priceMultiplier) || agent.loanBalance < 200)) {
@@ -484,13 +503,13 @@ export class BehaviorSystem {
         if (agent.health < 70 && agent.state !== 'SLEEPING') {
             const hospitalCost = 0.2 * this.priceMultiplier;
             // Priority 1: Hospital (Fastest recovery)
-            if (totalWealth >= hospitalCost) {
+            if (finances.liquidFunds >= hospitalCost) {
                 this.ensureAtLocation(agent, agentIndex, 'Hospital', 'TREATING', allAgents);
                 return;
             }
             // Priority 2: Eating (Moderate recovery + prevents decay)
             const restaurantCost = 0.05 * this.priceMultiplier;
-            if (totalWealth >= restaurantCost) {
+            if (finances.liquidFunds >= restaurantCost) {
                 this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING', allAgents);
                 return;
             }
@@ -506,9 +525,9 @@ export class BehaviorSystem {
         }
 
         // Charm system: Wealthy agents prioritize shopping to increase charm
-        const isWealthy = totalWealth >= 100 * this.priceMultiplier;
+        const isWealthy = finances.disposableFunds >= 100 * this.priceMultiplier;
         const hasBasicNeedsMet = agent.hunger < 30 && agent.health > 80;
-        const isCharmSeeker = isWealthy && hasBasicNeedsMet && agent.charm < 100;
+        const isCharmSeeker = finances.canShop && isWealthy && hasBasicNeedsMet && agent.charm < 100;
         
         if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < 0.1) {
             agent.state = 'SHOPPING';
@@ -518,11 +537,12 @@ export class BehaviorSystem {
             return;
         }
 
-        // Financial Management: Only deposit if very wealthy to reduce frequency
-        const depositChance = isWealthy ? 0.05 : 0.001;
+        // Financial Management: deposit surplus cash whenever the safety rules allow it.
+        // Saving is a deterministic financial rule, not a rare random event.
+        const depositChance = 1;
         const depositThreshold = isWealthy ? 50 : 100;
 
-        if (isBankOpen && agent.cash >= depositThreshold && agent.hunger < 20 && agent.health > 90 &&
+        if (isBankOpen && finances.shouldBank && agent.cash >= depositThreshold && agent.hunger < 20 && agent.health > 90 &&
             Math.random() < depositChance && agent.state !== 'WORKING' && agent.state !== 'SLEEPING') {
             agent.state = 'BANKING';
             agent.conversation = isWealthy ? "Need to manage my growing capital." : "Better deposit this extra cash.";
@@ -577,8 +597,13 @@ export class BehaviorSystem {
 
     private applyJevAction(agent: Agent, action: JevAction, agentIndex: number, allAgents: Agent[], time: number) {
         // Never let an asynchronous JEV response violate the health/charm objective.
-        if ((action.type === 'SHOP' || action.type === 'LIBRARY') && (agent.health < 80 || agent.hunger > 35 || agent.charm >= 100)) {
+        const finances = planFinances(agent, this.priceMultiplier, Math.floor(time / 60) % 24);
+        if (action.type === 'SHOP' && (!finances.canShop || agent.health < 80 || agent.hunger > 35 || agent.charm >= 100)) {
             agent.jevIntent = { type: 'LOCAL_RULE', reason: '健康或饥饿未达安全线，暂缓购物。', time, status: 'fallback' };
+            return;
+        }
+        if (action.type === 'LIBRARY' && (agent.health < 80 || agent.hunger > 35 || agent.charm >= 100)) {
+            agent.jevIntent = { type: 'LOCAL_RULE', reason: '健康或饥饿未达安全线，暂缓低成本魅力活动。', time, status: 'fallback' };
             return;
         }
         agent.jevIntent = { type: action.type, location: action.location, reason: action.reason, time, status: 'planned' };
