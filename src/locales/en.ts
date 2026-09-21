@@ -15,6 +15,8 @@ export const en = {
     default: 'Default',
     success: 'Success',
     failed: 'Failed',
+    enabled: 'Enabled',
+    disabled: 'Disabled',
   },
   header: {
     title: 'AI Town Simulation',
@@ -174,6 +176,9 @@ export const en = {
     subtitle: 'Configure LLM dialogue engine and JEV autonomous behavior model',
     tabLlm: 'Dialogue LLM',
     tabJev: 'JEV Behavior AI',
+    llmEnable: 'Enable Resident Dialogue (LLM)',
+    llmEnableDesc: 'When enabled, residents talk and interact via LLM; when disabled, no LLM calls are made',
+    llmDisabledNotice: 'Dialogue feature is currently disabled. No requests will be sent to the LLM during simulation.',
     presets: 'Quick Presets',
     provider: 'Provider / Protocol',
     providerOllama: 'Ollama Local Instance',

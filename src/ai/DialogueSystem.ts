@@ -7,6 +7,7 @@ import { Agent } from '../engine/Agent';
 import { generateResponse } from '@/lib/llm';
 import { LLM_MODEL } from '@/lib/config';
 import { getLanguage, t } from '@/lib/i18nCore';
+import { loadModelSettings } from '@/lib/modelSettings';
 
 export interface DialoguePacket {
     speaker: string;
@@ -23,6 +24,10 @@ export class DialogueSystem {
 
     // Check if agents are close enough to talk and if they should talk
     update(agents: Agent[], gameTime: number) {
+        // 若系统配置关闭了对话功能，完全不触发居民交谈与大模型调用
+        if (!loadModelSettings().llm.enabled) {
+            return;
+        }
         if (this.isGenerating) return; // Don't start new ones if busy (simple throttle)
 
         for (let i = 0; i < agents.length; i++) {

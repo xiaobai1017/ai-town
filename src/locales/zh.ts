@@ -15,6 +15,8 @@ export const zh = {
     default: '默认',
     success: '成功',
     failed: '失败',
+    enabled: '已开启',
+    disabled: '已关闭',
   },
   header: {
     title: 'AI 小镇模拟',
@@ -174,6 +176,9 @@ export const zh = {
     subtitle: '配置对话生成大语言模型与 JEV 自主行为决策模型',
     tabLlm: '对话大模型 (LLM)',
     tabJev: 'JEV 决策模型',
+    llmEnable: '启用居民对话功能 (LLM)',
+    llmEnableDesc: '开启后居民相遇将调用大语言模型进行对话交流；关闭则完全不调用大模型',
+    llmDisabledNotice: '对话功能当前已关闭，居民相遇时不会交谈，也不会向大模型发起任何调用。',
     presets: '常用预设',
     provider: '接入协议 / 提供商',
     providerOllama: 'Ollama 本地部署',

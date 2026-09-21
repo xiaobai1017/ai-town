@@ -6,6 +6,7 @@
 export type LLMProviderType = 'ollama' | 'openai';
 
 export interface LLMConfig {
+  enabled: boolean;
   provider: LLMProviderType;
   baseUrl: string;
   apiKey: string;
@@ -30,6 +31,7 @@ export const SETTINGS_CHANGE_EVENT = 'ai_town_model_settings_changed';
 
 export const DEFAULT_MODEL_SETTINGS: AppModelSettings = {
   llm: {
+    enabled: true,
     provider: 'ollama',
     baseUrl: process.env.NEXT_PUBLIC_LLM_ENDPOINT || 'http://localhost:11434/api/generate',
     apiKey: process.env.NEXT_PUBLIC_LLM_API_KEY || '',
@@ -74,6 +76,7 @@ export function loadModelSettings(): AppModelSettings {
       llm: {
         ...DEFAULT_MODEL_SETTINGS.llm,
         ...(parsed.llm || {}),
+        enabled: parsed.llm?.enabled !== undefined ? parsed.llm.enabled : true,
       },
       jev: {
         ...DEFAULT_MODEL_SETTINGS.jev,

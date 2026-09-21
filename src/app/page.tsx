@@ -240,8 +240,8 @@ export default function Home() {
             <Settings size={18} className="text-indigo-600 group-hover:rotate-45 transition-transform duration-200" />
             <div className="flex flex-col text-left">
               <span className="text-[9px] text-slate-400 font-bold uppercase leading-none">{t('header.modelConfig')}</span>
-              <span className="text-xs font-bold leading-tight max-w-[100px] truncate text-slate-700 group-hover:text-indigo-600">
-                {currentSettings.llm.model || 'Default'}
+              <span className={`text-xs font-bold leading-tight max-w-[100px] truncate ${currentSettings.llm.enabled ? 'text-slate-700 group-hover:text-indigo-600' : 'text-slate-400 italic'}`}>
+                {currentSettings.llm.enabled ? (currentSettings.llm.model || 'Default') : t('common.disabled')}
               </span>
             </div>
           </button>

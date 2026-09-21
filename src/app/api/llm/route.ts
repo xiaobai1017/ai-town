@@ -28,7 +28,14 @@ export async function POST(request: Request) {
     const model = (body.model || body.config?.model || process.env.NEXT_PUBLIC_LLM_MODEL || 'qwen3:0.6b').trim();
     const temperature = typeof body.config?.temperature === 'number' ? body.config.temperature : 0.4;
 
+    const enabled = body.config?.enabled !== undefined ? body.config.enabled : true;
+
+    if (enabled === false) {
+      return NextResponse.json({ text: '' });
+    }
+
     const fullConfig: LLMConfig = {
+      enabled,
       provider,
       baseUrl,
       apiKey,

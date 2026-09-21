@@ -257,8 +257,33 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
         <div className="p-6 overflow-y-auto space-y-5 flex-1">
           {activeTab === 'llm' && (
             <div className="space-y-4">
+              {/* 对话功能总开关 */}
+              <div className="flex items-center justify-between p-3.5 bg-indigo-50/60 rounded-xl border border-indigo-100">
+                <div>
+                  <h4 className="text-sm font-bold text-indigo-950">{t('settings.llmEnable')}</h4>
+                  <p className="text-xs text-indigo-600/80 mt-0.5">{t('settings.llmEnableDesc')}</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={settings.llm.enabled}
+                    onChange={(e) => setSettings(s => ({ ...s, llm: { ...s.llm, enabled: e.target.checked } }))}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                </label>
+              </div>
+
+              {/* 关闭状态提示条 */}
+              {!settings.llm.enabled && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-center gap-2">
+                  <span className="text-base">ℹ️</span>
+                  <span>{t('settings.llmDisabledNotice')}</span>
+                </div>
+              )}
+
               {/* 协议类型选择 */}
-              <div>
+              <div className={!settings.llm.enabled ? 'opacity-60' : ''}>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                   API 协议类型
                 </label>

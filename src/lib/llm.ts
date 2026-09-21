@@ -21,6 +21,12 @@ export async function generateResponse(
     };
 
     const targetModel = activeConfig.model || 'qwen3:0.6b';
+
+    // 若系统配置关闭了对话大模型，直接返回空，避免发起请求
+    if (activeConfig.enabled === false) {
+      return '';
+    }
+
     await logToServer(`LLM Request [${activeConfig.provider} / ${targetModel}]: ${prompt}`);
 
     // 环境自适应：Node.js 服务端环境下直接调用核心逻辑，避免相对路径 '/api/llm' 导致 ERR_INVALID_URL
