@@ -70,6 +70,22 @@ export class DialogueSystem {
         return moods[Math.floor(Math.random() * moods.length)];
     }
 
+    /**
+     * Expose a small, human-readable slice of the latest decision to dialogue.
+     * The model sees an intention, never raw API details or confidence metadata.
+     */
+    private getDecisionHint(agent: Agent, include: boolean): string {
+        if (!include || !agent.jevIntent || agent.jevIntent.status === 'fallback' || agent.jevIntent.type === 'LOCAL_RULE') return '';
+        const labels: Record<string, string> = {
+            WORK: 'work and earn money', EAT: 'find food and recover', SLEEP: 'rest at home',
+            SHOP: 'shop at the Mall to grow charm', LIBRARY: 'read at the Library to grow charm steadily',
+            TREAT: 'visit the Hospital to recover', BANK: 'manage money at the Bank',
+            WANDER: 'wander around town', WAIT: 'wait for a better opportunity'
+        };
+        const plan = labels[agent.jevIntent.type] || agent.jevIntent.type.toLowerCase();
+        return `Your current personal plan is to ${plan}. You may mention it naturally if relevant, but do not describe it as an AI decision.`;
+    }
+
     // Get random conversation topics based on roles, relationship, and time
     private getRandomTopics(roleA: string, roleB: string, relationship: string, hour: number): string[] {
         const allTopics = [];
@@ -172,11 +188,16 @@ export class DialogueSystem {
             // Add random conversation topics based on relationship, roles, and time
             const topics = this.getRandomTopics(a.role, b.role, relationshipA, hour);
             const topicHint = topics.length > 0 ? `Consider topics like: ${topics.join(', ')}.` : '';
+            // Only some conversations carry planning context, keeping dialogue varied.
+            const includeDecisionHints = Math.random() < 0.6;
+            const decisionHintA = this.getDecisionHint(a, includeDecisionHints);
+            const decisionHintB = this.getDecisionHint(b, includeDecisionHints);
 
             const promptA = `You are ${a.name} (${a.description}). You are feeling ${this.getMood(a)}. 
             It's ${timeDescription}, and you meet ${b.name} (${b.description}), who is your ${relationshipA}. 
             ${historyStrA} 
             ${topicHint}
+            ${decisionHintA}
             Say something vivid and expressive (max 15 words) matching your personality, current mood, and the time of day.`;
             const textA_Raw = await generateResponse(LLM_MODEL, promptA);
             const textA_Final = textA_Raw.trim();
@@ -188,6 +209,7 @@ export class DialogueSystem {
             const promptB = `You are ${b.name} (${b.description}). You are feeling ${this.getMood(b)}. 
             It's ${timeDescription}, and ${a.name} (${a.description}), your ${relationshipB}, said: "${textA_Final}". 
             ${historyStrB}
+            ${decisionHintB}
             Reply vividly and expressively (max 15 words) matching your personality, current mood, and the time of day. 
             Also, strictly start with a tag: [POS], [NEU], or [NEG] based on your reaction.`;
             const textB_Raw = await generateResponse(LLM_MODEL, promptB);

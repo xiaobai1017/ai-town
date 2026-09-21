@@ -1,7 +1,7 @@
 import { Agent, AgentState } from '../engine/Agent';
 import { World } from '../engine/World';
 
-export type JevActionType = 'WORK' | 'EAT' | 'SLEEP' | 'SHOP' | 'TREAT' | 'BANK' | 'WANDER' | 'WAIT';
+export type JevActionType = 'WORK' | 'EAT' | 'SLEEP' | 'SHOP' | 'LIBRARY' | 'TREAT' | 'BANK' | 'WANDER' | 'WAIT';
 
 export interface JevAction {
   type: JevActionType;
@@ -19,16 +19,40 @@ export interface JevDecisionContext {
     riskMultiplier: number;
     locations: { name: string; distance: number }[];
   };
+  objective: {
+    healthFloor: number;
+    hungerCeiling: number;
+    charmTarget: number;
+    priority: 'health_then_charm';
+  };
   candidates: JevAction[];
 }
 
-const ALLOWED_ACTIONS = new Set<JevActionType>(['WORK', 'EAT', 'SLEEP', 'SHOP', 'TREAT', 'BANK', 'WANDER', 'WAIT']);
+const ALLOWED_ACTIONS = new Set<JevActionType>(['WORK', 'EAT', 'SLEEP', 'SHOP', 'LIBRARY', 'TREAT', 'BANK', 'WANDER', 'WAIT']);
 
 export function buildJevContext(agent: Agent, world: World, time: number, priceMultiplier: number, wageMultiplier: number, riskMultiplier: number): JevDecisionContext {
   const locations = world.locations.map(location => ({
     name: location.name,
     distance: Math.abs(agent.position.x - location.entry.x) + Math.abs(agent.position.y - location.entry.y)
   }));
+
+  const healthFloor = 80;
+  const hungerCeiling = 35;
+  const canPursueCharmSafely = agent.health >= healthFloor && agent.hunger <= hungerCeiling &&
+    (agent.cash + agent.bankBalance) >= 5 * priceMultiplier && agent.charm < 100;
+  const canReadSafely = agent.health >= healthFloor && agent.hunger <= hungerCeiling && agent.charm < 100;
+
+  const candidates: JevAction[] = [
+    { type: 'WORK', location: workLocation(agent) },
+    { type: 'EAT', location: 'Restaurant' },
+    { type: 'SLEEP', location: 'My House' },
+    ...(canPursueCharmSafely ? [{ type: 'SHOP' as const, location: 'Mall' }] : []),
+    ...(canReadSafely ? [{ type: 'LIBRARY' as const, location: 'Library' }] : []),
+    { type: 'TREAT', location: 'Hospital' },
+    { type: 'BANK', location: 'Bank' },
+    { type: 'WANDER' },
+    { type: 'WAIT' }
+  ];
 
   return {
     agent: {
@@ -38,16 +62,8 @@ export function buildJevContext(agent: Agent, world: World, time: number, priceM
       charm: agent.charm, memory: agent.memory
     },
     world: { time, hour: Math.floor(time / 60) % 24, priceMultiplier, wageMultiplier, riskMultiplier, locations },
-    candidates: [
-      { type: 'WORK', location: workLocation(agent) },
-      { type: 'EAT', location: 'Restaurant' },
-      { type: 'SLEEP', location: 'My House' },
-      { type: 'SHOP', location: 'Mall' },
-      { type: 'TREAT', location: 'Hospital' },
-      { type: 'BANK', location: 'Bank' },
-      { type: 'WANDER' },
-      { type: 'WAIT' }
-    ]
+    objective: { healthFloor, hungerCeiling, charmTarget: 100, priority: 'health_then_charm' },
+    candidates
   };
 }
 

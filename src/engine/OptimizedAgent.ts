@@ -1,6 +1,6 @@
 import { Coordinate, World } from './World';
 
-export type AgentState = 'IDLE' | 'MOVING' | 'WORKING' | 'TALKING' | 'SLEEPING' | 'CRIMINAL' | 'ARRESTED' | 'EATING' | 'BANKING' | 'TREATING' | 'SHOPPING' | 'DEAD';
+export type AgentState = 'IDLE' | 'MOVING' | 'WORKING' | 'READING' | 'TALKING' | 'SLEEPING' | 'CRIMINAL' | 'ARRESTED' | 'EATING' | 'BANKING' | 'TREATING' | 'SHOPPING' | 'DEAD';
 
 export interface AgentMemory {
     lastConversion?: { with: string, topic: string, time: number };
@@ -260,8 +260,13 @@ export class OptimizedAgent {
         const friendBonus = Math.min(MAX_FRIEND_BONUS, friendCount);
         const totalCharmGain = baseCharmGain + friendBonus;
         
-        this.charm = Math.min(100, this.charm + totalCharmGain);
+        this.charm = Math.min(100, Math.round((this.charm + totalCharmGain) * 100) / 100);
         this.lastShoppingAmount = shoppingAmount;
+    }
+
+    increaseLibraryCharm(amount: number = 0.03) {
+        this.charm = Math.min(100, Math.round((this.charm + amount) * 100) / 100);
+        this.lastShoppingAmount = 0;
     }
     
     // 优化：关系管理

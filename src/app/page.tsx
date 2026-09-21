@@ -145,7 +145,7 @@ export default function Home() {
                   <span className="text-xs font-black text-purple-600">#{index + 1}</span>
                   <span>{agent.state === 'DEAD' ? '🪦' : agent.emoji}</span>
                   <span className="font-medium">{agent.name}</span>
-                  <span className="text-xs text-purple-600">{agent.charm}</span>
+                  <span className="text-xs text-purple-600">{agent.charm.toFixed(2).replace(/\.00$/, '')}</span>
                 </span>
               ))
             }
@@ -258,7 +258,7 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`font-black text-xs ${a.charm >= 100 ? 'text-yellow-400' : 'text-purple-400'}`}>Charm: {a.charm}</p>
+                      <p className={`font-black text-xs ${a.charm >= 100 ? 'text-yellow-400' : 'text-purple-400'}`}>Charm: {a.charm.toFixed(2).replace(/\.00$/, '')}</p>
                       {a.state === 'DEAD' && <p className="text-rose-400 font-black text-xs">{a.deathCause}</p>}
                       <p className="text-[10px] text-slate-500 font-mono italic">Survived: {(a.livingTicks / 60).toFixed(1)} hrs</p>
                     </div>

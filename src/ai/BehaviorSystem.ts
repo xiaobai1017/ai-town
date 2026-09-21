@@ -162,7 +162,12 @@ export class BehaviorSystem {
                     }
                     agent.sessionFinance = undefined;
                 }
-                agent.hunger = Math.min(100, agent.hunger + 0.02); // Reduced hunger rate - takes about 3 days to reach maximum
+                const hungerRate = agent.state === 'READING' && locAt?.name === 'Library' ? 0.04 : 0.02;
+                agent.hunger = Math.min(100, agent.hunger + hungerRate);
+            }
+
+            if (agent.state === 'READING' && locAt?.name === 'Library') {
+                agent.increaseLibraryCharm(0.03);
             }
 
             // Shopping logic: High-end consumption at the Mall
@@ -416,7 +421,8 @@ export class BehaviorSystem {
         const isBankOpen = hour >= 9 && hour < 18;
 
         // JEV only handles ordinary decisions. Safety-critical rules below remain local.
-        if (this.jevEnabled && agent.state === 'IDLE' && !this.jevPending.has(agent.id) &&
+        if (this.jevEnabled && agent.state === 'IDLE' && agent.health >= 80 && agent.hunger <= 35 &&
+            !this.jevPending.has(agent.id) &&
             (this.jevLastDecision.get(agent.id) ?? -Infinity) <= time - 5) {
             this.jevPending.add(agent.id);
             agent.jevIntent = { type: 'THINKING', reason: 'JEV 正在分析下一步行动…', time, status: 'thinking' };
@@ -554,14 +560,14 @@ export class BehaviorSystem {
             }
         } else if (hour >= 17 && hour < 22) {
             // LEISURE
-            if (agent.state !== 'IDLE' && agent.state !== 'SHOPPING') {
+            if (agent.state !== 'IDLE' && agent.state !== 'SHOPPING' && agent.state !== 'READING') {
                 const loc = this.getLeisureLocation(agentIndex, agent);
-                const desState = loc === 'Mall' ? 'SHOPPING' : 'IDLE';
+                const desState = loc === 'Mall' ? 'SHOPPING' : loc === 'Library' ? 'READING' : 'IDLE';
                 this.ensureAtLocation(agent, agentIndex, loc, desState, allAgents);
             }
         } else {
             // FREE TIME (Catch-all for remaining hours, e.g., 22-23, 0-7 if not sleeping)
-            if (agent.state !== 'IDLE' && agent.state !== 'TALKING' && agent.state !== 'EATING' && agent.state !== 'SHOPPING') {
+            if (agent.state !== 'IDLE' && agent.state !== 'TALKING' && agent.state !== 'EATING' && agent.state !== 'SHOPPING' && agent.state !== 'READING') {
                 this.ensureAtLocation(agent, agentIndex, this.getLeisureLocation(agentIndex + 1, agent), 'IDLE', allAgents);
             } else if (agent.state === 'IDLE' && Math.random() < 0.02) {
                 this.wander(agent);
@@ -570,12 +576,18 @@ export class BehaviorSystem {
     }
 
     private applyJevAction(agent: Agent, action: JevAction, agentIndex: number, allAgents: Agent[], time: number) {
+        // Never let an asynchronous JEV response violate the health/charm objective.
+        if ((action.type === 'SHOP' || action.type === 'LIBRARY') && (agent.health < 80 || agent.hunger > 35 || agent.charm >= 100)) {
+            agent.jevIntent = { type: 'LOCAL_RULE', reason: '健康或饥饿未达安全线，暂缓购物。', time, status: 'fallback' };
+            return;
+        }
         agent.jevIntent = { type: action.type, location: action.location, reason: action.reason, time, status: 'planned' };
         const destinations: Record<string, [string, AgentState]> = {
             WORK: [action.location || this.getWorkLocation(agent), 'WORKING'],
             EAT: [action.location || 'Restaurant', 'EATING'],
             SLEEP: [action.location || 'My House', 'SLEEPING'],
             SHOP: [action.location || 'Mall', 'SHOPPING'],
+            LIBRARY: [action.location || 'Library', 'READING'],
             TREAT: [action.location || 'Hospital', 'TREATING'],
             BANK: [action.location || 'Bank', 'BANKING']
         };

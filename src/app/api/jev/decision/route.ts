@@ -13,22 +13,32 @@ export async function POST(request: Request) {
 
   try {
     const context = await request.json();
+    const candidates: Array<{ type?: string; location?: string }> = Array.isArray(context?.candidates) ? context.candidates : [];
+    const availableTypes = new Set<string>(candidates
+      .map((candidate: { type?: string }) => candidate.type)
+      .filter((type): type is string => Boolean(type)));
+    const descriptions: Record<string, string> = {
+      WORK: 'Work to earn money for future safe charm growth.',
+      EAT: 'Eat now when hunger is too high; health comes first.',
+      SLEEP: 'Sleep and recover when it is the safest option.',
+      SHOP: 'Shop at the Mall to gain charm quickly, only when health and hunger floors are safe.',
+      LIBRARY: 'Read at the Library for slower charm growth with no money cost; hunger rises more than at the Mall.',
+      TREAT: 'Recover health at the Hospital when below the health floor.',
+      BANK: 'Get money or a loan when resources are insufficient for safe needs.',
+      WANDER: 'Move locally when needs are satisfied and no higher-value action is available.',
+      WAIT: 'Wait briefly when no useful safe action is available.'
+    };
+    const criteria = Object.fromEntries([...availableTypes].map(type => [type, descriptions[type] || 'A safe available action.']));
     const result = await client.systemOne({
       state: context,
       questions: {
-        action: choice('Which single next action is best for this resident? Choose only an action that is safe and present in candidates.', {
-          WORK: 'Go to the work location and work.',
-          EAT: 'Go to a food location and eat.',
-          SLEEP: 'Go home and sleep.',
-          SHOP: 'Go to the Mall and shop for charm.',
-          TREAT: 'Go to the Hospital for treatment.',
-          BANK: 'Go to the Bank for money or financial management.',
-          WANDER: 'Wander to a nearby location.',
-          WAIT: 'Wait and remain idle.'
-        })
+        action: choice('Choose one available candidate. Hard constraint: keep health at or above objective.healthFloor and hunger at or below objective.hungerCeiling. Subject to that constraint, maximize charm as quickly as possible; use SHOP when it is available and safe.', criteria)
       }
     });
     const type = result.answers.action.choice;
+    if (!availableTypes.has(type)) {
+      return NextResponse.json({ error: 'JEV selected an unavailable action' }, { status: 502 });
+    }
     const candidate = context?.candidates?.find((item: { type?: string }) => item.type === type);
     return NextResponse.json({
       type,

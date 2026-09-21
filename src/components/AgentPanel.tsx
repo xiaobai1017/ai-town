@@ -123,7 +123,7 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                     </div>
                     <div className="flex justify-between items-center mt-1">
                         <span className="text-xs text-slate-400">Social Status</span>
-                        <span className="text-xs font-bold text-purple-600">{agent.charm}/100</span>
+                        <span className="text-xs font-bold text-purple-600">{agent.charm.toFixed(2).replace(/\.00$/, '')}/100</span>
                     </div>
                 </div>
 
