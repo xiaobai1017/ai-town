@@ -1,4 +1,9 @@
 
+/**
+ * 行为系统，控制居民日常作息、就医就餐决策、建筑容量管控与流向分流
+ * @author hubin
+ */
+
 import { Agent, AgentState } from '../engine/Agent';
 import { World, Location } from '../engine/World';
 import { buildJevContext, requestJevDecision, JevAction } from './JevDecisionProvider';
@@ -147,6 +152,9 @@ export class BehaviorSystem {
                         agent.state = 'IDLE'; // Force re-decision in decideAction
                         agent.conversation = "Too expensive here! I need something cheaper.";
                         agent.conversationTTL = 30;
+                        if (locAt.entry) {
+                            agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
+                        }
                     } else {
                         agent.state = 'IDLE';
                         agent.conversation = "I'm completely broke and starving!";
@@ -155,7 +163,11 @@ export class BehaviorSystem {
                 } else if (agent.hunger === 0) {
                     agent.state = 'IDLE';
                     agent.conversation = "I'm full!";
-                    agent.conversationTTL = 50;
+                    agent.conversationTTL = 40;
+                    // 吃饱后主动迈步移向门外，腾出室内空位给其他顾客
+                    if (locAt && locAt.entry) {
+                        agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
+                    }
                 }
             } else {
                 if (agent.sessionFinance && agent.sessionFinance.type === 'expense' && agent.sessionFinance.description.startsWith('Food')) {
@@ -643,20 +655,39 @@ export class BehaviorSystem {
     private hasAvailableSlot(locationName: string, allAgents: Agent[]): boolean {
         const location = this.world.locations.find(item => item.name === locationName);
         if (!location || !location.interior || !location.width || !location.height) return true;
-        const capacity = Math.max(1, (location.width - 2) * (location.height - 2));
+        // 餐厅等高频进出建筑，将舒适容量严格限制为 3 人，避免小人扎堆死锁
+        const maxComfort = locationName === 'Restaurant' ? 3 : Math.min(4, Math.max(1, (location.width - 2) * (location.height - 2)));
         const occupants = allAgents.filter(other => {
+            if (other.state === 'DEAD') return false;
             const at = other.position;
             const target = other.targetPosition;
             const inside = (point: { x: number; y: number }) => point.x >= location.x! + 1 && point.x < location.x! + location.width! - 1 && point.y >= location.y! + 1 && point.y < location.y! + location.height! - 1;
             return inside(at) || Boolean(target && inside(target));
         }).length;
-        return occupants < capacity;
+        return occupants < maxComfort;
     }
 
     private getAvailableFoodLocation(agent: Agent, allAgents: Agent[], funds: number, restaurantCost: number, bakeryCost: number, homeCost: number): string | null {
+        // 如果小人当前已在某个就餐场所内，优先在当前地点进食
+        const currentLoc = this.world.locations.find(l => 
+            l.x !== undefined && l.y !== undefined && l.width !== undefined && l.height !== undefined &&
+            agent.position.x >= l.x + 1 && agent.position.x < l.x + l.width - 1 &&
+            agent.position.y >= l.y + 1 && agent.position.y < l.y + l.height - 1
+        );
+        if (currentLoc && (currentLoc.name === 'Restaurant' || currentLoc.name === 'Bakery' || currentLoc.name === 'My House')) {
+            const cost = currentLoc.name === 'Restaurant' ? restaurantCost : currentLoc.name === 'Bakery' ? bakeryCost : homeCost;
+            if (funds >= cost) return currentLoc.name;
+        }
+
+        // 优先根据容量与预算分流
         if (funds >= restaurantCost && this.hasAvailableSlot('Restaurant', allAgents)) return 'Restaurant';
         if (funds >= bakeryCost && this.hasAvailableSlot('Bakery', allAgents)) return 'Bakery';
         if (funds >= homeCost && this.hasAvailableSlot('My House', allAgents)) return 'My House';
+
+        // 若热门餐厅客满但急需进食，分流至面包店或家
+        if (funds >= bakeryCost && this.hasAvailableSlot('Bakery', allAgents)) return 'Bakery';
+        if (funds >= homeCost) return 'My House';
+
         return null;
     }
 
@@ -721,13 +752,19 @@ export class BehaviorSystem {
             const innerW = location.width - 2;
             const innerH = location.height - 2;
 
+            const isDoorTile = (px: number, py: number) => {
+                if (px === location.entry.x && py === location.entry.y) return true;
+                if (location.doors && location.doors.some(d => d.x === px && d.y === py)) return true;
+                return false;
+            };
+
             // Spiral or random search for a free tile inside
-            for (let attempt = 0; attempt < 10; attempt++) {
+            for (let attempt = 0; attempt < 12; attempt++) {
                 const tx = innerX + Math.floor(Math.random() * innerW);
                 const ty = innerY + Math.floor(Math.random() * innerH);
 
-                // Don't stand on the door tile inside
-                if (tx === location.entry.x && ty === location.entry.y) continue;
+                // Don't stand on any door tile inside
+                if (isDoorTile(tx, ty)) continue;
 
                 const occupies = this.world.grid[ty][tx] === 'floor';
                 const isOccupied = allAgents.some(a => a.id !== agent.id && a.position.x === tx && a.position.y === ty);
@@ -739,12 +776,12 @@ export class BehaviorSystem {
                 }
             }
 
-            // Fallback: If no free spot found, use the old index-based distribution but ensure it's not the door
+            // Fallback: If no free spot found, use index-based distribution but ensure it's not on the doors
             if (!foundFree) {
                 const offsetX = (agentIndex % innerW);
                 const offsetY = (Math.floor(agentIndex / innerW) % innerH);
                 target = { x: innerX + offsetX, y: innerY + offsetY };
-                if (target.x === location.entry.x && target.y === location.entry.y) {
+                if (isDoorTile(target.x, target.y)) {
                     target.y = Math.max(innerY, target.y - 1);
                 }
             }

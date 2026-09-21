@@ -1,3 +1,8 @@
+/**
+ * 兼容优化世界地图模块
+ * @author hubin
+ */
+
 import { Coordinate, Location as OriginalLocation, TileType, World } from './World';
 
 // 重新导出类型以供其他模块使用
@@ -83,13 +88,19 @@ export class CompatibleOptimizedWorld extends World {
       }
     }
     
-    // 添加门
-    this._setTile(y + h - 1, x + Math.floor(w / 2), FLOOR, 'floor');
+    // 添加双格大门
+    const doorY = y + h - 1;
+    const doorX1 = x + Math.max(1, Math.floor(w / 2) - 1);
+    const doorX2 = x + Math.min(w - 2, Math.floor(w / 2));
+
+    this._setTile(doorY, doorX1, FLOOR, 'floor');
+    this._setTile(doorY, doorX2, FLOOR, 'floor');
     
     this.locations.push({
       name,
       x, y,
-      entry: { x: x + Math.floor(w / 2), y: y + h - 1 },
+      entry: { x: doorX2, y: doorY },
+      doors: [{ x: doorX1, y: doorY }, { x: doorX2, y: doorY }],
       interior: { x: x + Math.floor(w / 2), y: y + Math.floor(h / 2) },
       width: w,
       height: h,

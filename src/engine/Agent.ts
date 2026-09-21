@@ -1,3 +1,8 @@
+/**
+ * 居民智能体核心类，包含防死锁移动系统、让路机制与紧急脱困
+ * @author hubin
+ */
+
 import { Coordinate, World } from './World';
 
 export type AgentState = 'IDLE' | 'MOVING' | 'WORKING' | 'READING' | 'TALKING' | 'SLEEPING' | 'CRIMINAL' | 'ARRESTED' | 'EATING' | 'BANKING' | 'TREATING' | 'SHOPPING' | 'DEAD';
@@ -122,30 +127,55 @@ export class Agent {
         if (this.path.length > 0) {
             const nextStep = this.path[0];
 
-            // Collision detection
-            const isOccupied = agents.some(other =>
+            // 碰撞检测：寻找阻挡者
+            const blocker = agents.find(other =>
                 other.id !== this.id &&
-                other.state !== 'DEAD' && // Dead bodies don't block? Actually maybe they should. But let's say they don't for gameplay.
+                other.state !== 'DEAD' &&
                 other.position.x === nextStep.x &&
                 other.position.y === nextStep.y
             );
 
-            if (isOccupied) {
+            if (blocker) {
                 this.blockedTicks++;
 
-                // If stuck for too long, try to find another way
-                if (this.blockedTicks > 10 && this.targetPosition) {
-                    const newPath = world.findPath(this.position, this.targetPosition);
-                    if (newPath) {
-                        this.path = newPath;
+                // 1. 礼让机制 (Yielding)：如果阻挡者是 IDLE 状态，且阻挡者周围有空位，让阻挡者主动挪一步给赶路/出门人让道
+                if (blocker.state === 'IDLE' && this.blockedTicks >= 1) {
+                    const yielded = attemptYield(blocker, agents, world);
+                    if (yielded) {
+                        this.blockedTicks = 0;
+                        return;
                     }
                 }
 
-                // If still stuck for way too long, just give up and reset
-                if (this.blockedTicks > 30) {
-                    this.stop();
+                // 2. 动态绕行 (Dynamic Rerouting)：当受阻 >= 2 ticks 且有目标时，避开所有其他静止小人重新寻路
+                if (this.blockedTicks >= 2 && this.targetPosition) {
+                    const otherPositions = agents
+                        .filter(a => a.id !== this.id && a.state !== 'DEAD')
+                        .map(a => a.position);
+                    const newPath = world.findPath(this.position, this.targetPosition, otherPositions);
+                    if (newPath && newPath.length > 0 && (newPath[0].x !== nextStep.x || newPath[0].y !== nextStep.y)) {
+                        this.path = newPath;
+                        this.blockedTicks = 0;
+                        return;
+                    }
+                }
+
+                // 3. 紧急脱困/软穿透 (Emergency Ghosting)：
+                // 若生命垂危（health < 40 或 hunger > 80 急需就医/就餐）且受阻 >= 4 ticks，或任何小人严重受阻 >= 10 ticks
+                const isCritical = this.health < 40 || this.hunger > 80;
+                if ((isCritical && this.blockedTicks >= 4) || this.blockedTicks >= 10) {
+                    // 允许单步穿透脱困，彻底打破死锁
+                    this.blockedTicks = 0;
+                    this.path.shift();
+                    this.position = nextStep;
+                    return;
+                }
+
+                // 4. 重度拥堵提示与重置
+                if (this.blockedTicks >= 25) {
+                    this.stop(world, agents);
                     this.conversation = "Too crowded here!";
-                    this.conversationTTL = 30;
+                    this.conversationTTL = 20;
                 }
                 return;
             }
@@ -161,11 +191,22 @@ export class Agent {
         }
     }
 
-    stop() {
+    stop(world?: World, agents?: Agent[]) {
         this.path = [];
         this.targetPosition = null;
         this.state = 'IDLE';
         this.arrivalState = undefined;
+
+        // 门口禁停保护：若当前位于建筑门上，尝试挪到旁边非门格子，避免堵门
+        if (world && agents) {
+            const isOnDoor = world.locations.some(loc => 
+                (loc.doors?.some(d => d.x === this.position.x && d.y === this.position.y)) ||
+                (loc.entry.x === this.position.x && loc.entry.y === this.position.y)
+            );
+            if (isOnDoor) {
+                attemptYield(this, agents, world);
+            }
+        }
     }
 
     logTransaction(amount: number, description: string, type: 'income' | 'expense' | 'bank' | 'loan' | 'criminal', timestamp: number) {
@@ -259,4 +300,31 @@ function pushCharmEvent(history: CharmEvent[], event: Omit<CharmEvent, 'lastTime
     if (history.length > 50) {
         history.pop();
     }
+}
+
+/**
+ * 尝试让阻挡者小人主动挪步让出通道
+ */
+function attemptYield(blocker: Agent, agents: Agent[], world: World): boolean {
+    const dirs = [
+        { x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 0 }, { x: -1, y: 0 }
+    ];
+    // 随机打乱方向避免都往同一方向躲
+    for (let i = dirs.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+    }
+
+    for (const d of dirs) {
+        const nx = blocker.position.x + d.x;
+        const ny = blocker.position.y + d.y;
+        if (world.isWalkable(nx, ny)) {
+            const occ = agents.some(a => a.state !== 'DEAD' && a.position.x === nx && a.position.y === ny);
+            if (!occ) {
+                blocker.position = { x: nx, y: ny };
+                return true;
+            }
+        }
+    }
+    return false;
 }
