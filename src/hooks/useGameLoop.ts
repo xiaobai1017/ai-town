@@ -22,6 +22,7 @@ export interface GameState {
 }
 
 export function useGameLoop() {
+    const serverMode = process.env.NEXT_PUBLIC_SIMULATION_MODE === 'server';
     const [gameState, setGameState] = useState<GameState>({
         world: null,
         agents: [],
@@ -47,10 +48,50 @@ export function useGameLoop() {
     const replayRef = useRef<{ frames: ReplayFrame[]; index: number } | null>(null);
     const [replayAvailable, setReplayAvailable] = useState(false);
 
+    const hydrateServerState = useCallback((raw: any): GameState => {
+        const world = Object.assign(new World(raw.world.width, raw.world.height), raw.world);
+        const agents = raw.agents.map((item: any) => Object.assign(new Agent(item.id, item.name, item.role, item.position, item.color, item.emoji, item.description), item));
+        return { ...raw, world, agents } as GameState;
+    }, []);
+
+    const sendServerCommand = useCallback(async (type: string, value?: number | boolean) => {
+        if (!serverMode) return;
+        await fetch('/api/simulation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, value }) });
+        // Re-arm polling so the UI reflects the new server state immediately.
+        void pollRef.current?.();
+    }, [serverMode]);
+
     // Speed factor: 1 real second = X game minutes
     const [speed, setSpeed] = useState(1);
 
+    const pollRef = useRef<(() => Promise<void>) | null>(null);
+
     useEffect(() => {
+        if (serverMode) {
+            let active = true;
+            let timer: ReturnType<typeof setTimeout>;
+            const poll = async () => {
+                if (!active) return;
+                try {
+                    const response = await fetch('/api/simulation', { cache: 'no-store' });
+                    if (active) {
+                        const next = hydrateServerState(await response.json());
+                        stateRef.current = next;
+                        setGameState(next);
+                    }
+                } catch { /* server may still be starting */ }
+                if (!active) return;
+                // Only keep polling while the simulation is running. When
+                // stopped, the loop terminates; user actions (toggle, speed,
+                // etc.) call pollRef.current() to re-arm it.
+                if (stateRef.current.isRunning) {
+                    timer = setTimeout(poll, 250);
+                }
+            };
+            pollRef.current = poll;
+            void poll();
+            return () => { active = false; pollRef.current = null; clearTimeout(timer); };
+        }
         // Initialize
         setReplayAvailable(Boolean(loadReplay()));
         const { world, agents } = initializeWorld();
@@ -75,9 +116,10 @@ export function useGameLoop() {
         stateRef.current = initialState;
         behaviorSystemRef.current = behaviorSystem;
         dialogueSystemRef.current = dialogueSystem;
-    }, []);
+    }, [hydrateServerState, serverMode]);
 
     const tick = useCallback((timestamp: number) => {
+        if (serverMode) return;
         if (replayRef.current) {
             if (timestamp - lastTimeRef.current >= 100) {
                 const replay = replayRef.current;
@@ -170,7 +212,7 @@ export function useGameLoop() {
         }
 
         requestRef.current = setTimeout(() => tick(performance.now()), 50);
-    }, [speed]);
+    }, [serverMode, speed]);
 
     useEffect(() => {
         requestRef.current = setTimeout(() => tick(performance.now()), 50);
@@ -180,6 +222,7 @@ export function useGameLoop() {
     }, [tick]);
 
     const togglePause = () => {
+        if (serverMode) { void sendServerCommand('toggle'); return; }
         if (!stateRef.current.isRunning && !stateRef.current.isReplaying && !recordingRef.current && stateRef.current.world) {
             clearReplay();
             const initialFrame = makeReplayFrame({ ...stateRef.current, world: stateRef.current.world!, agents: stateRef.current.agents });
@@ -209,6 +252,7 @@ export function useGameLoop() {
     };
 
     const addAgent = () => {
+        if (serverMode) { void sendServerCommand('addAgent'); return; }
         if (!stateRef.current.world) return;
         const newId = (stateRef.current.agents.length + 1).toString();
         const names = ['Grace', 'Hank', 'Ivy', 'Jack', 'Kate', 'Leo', 'Mia', 'Noah', 'Olivia', 'Paul'];
@@ -243,6 +287,7 @@ export function useGameLoop() {
     };
 
     const removeAgent = () => {
+        if (serverMode) { void sendServerCommand('removeAgent'); return; }
         const currentAgents = stateRef.current.agents;
         if (currentAgents.length <= 1) return;
 
@@ -263,21 +308,25 @@ export function useGameLoop() {
     };
 
     const setPriceLevel = (val: number) => {
+        if (serverMode) { void sendServerCommand('price', val); return; }
         stateRef.current.priceLevel = val;
         setGameState(prev => ({ ...prev, priceLevel: val }));
     };
 
     const setWageLevel = (val: number) => {
+        if (serverMode) { void sendServerCommand('wage', val); return; }
         stateRef.current.wageLevel = val;
         setGameState(prev => ({ ...prev, wageLevel: val }));
     };
 
     const setRiskLevel = (val: number) => {
+        if (serverMode) { void sendServerCommand('risk', val); return; }
         stateRef.current.riskLevel = val;
         setGameState(prev => ({ ...prev, riskLevel: val }));
     };
 
     const setJevEnabled = (enabled: boolean) => {
+        if (serverMode) { void sendServerCommand('jev', enabled); return; }
         stateRef.current.jevEnabled = enabled;
         behaviorSystemRef.current?.setJevEnabled(enabled);
         setGameState(prev => ({ ...prev, jevEnabled: enabled }));
@@ -285,14 +334,16 @@ export function useGameLoop() {
 
     const setJevCooldown = (minutes: number) => {
         const clamped = Math.max(1, Math.round(minutes));
+        if (serverMode) { void sendServerCommand('jevCooldown', clamped); return; }
         stateRef.current.jevCooldown = clamped;
+        behaviorSystemRef.current?.setJevCooldownMinutes(clamped);
         setGameState(prev => ({ ...prev, jevCooldown: clamped }));
     };
 
     return {
         gameState,
         togglePause,
-        setSpeed,
+        setSpeed: (value: number) => { setSpeed(value); if (serverMode) void sendServerCommand('speed', value); },
         speed,
         addAgent,
         removeAgent,

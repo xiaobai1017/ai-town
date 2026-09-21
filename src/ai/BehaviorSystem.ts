@@ -447,6 +447,7 @@ export class BehaviorSystem {
         if (this.jevEnabled && agent.state === 'IDLE' && agent.health >= 80 && agent.hunger <= 35 &&
             !this.jevPending.has(agent.id) &&
             (this.jevLastDecision.get(agent.id) ?? -Infinity) <= time - this.jevCooldownMinutes) {
+            if (typeof window === 'undefined') console.log(`[JEV] trigger for ${agent.name} (state=${agent.state} hp=${agent.health} hunger=${agent.hunger})`);
             this.jevPending.add(agent.id);
             agent.jevIntent = { type: 'THINKING', reason: 'JEV 正在分析下一步行动…', time, status: 'thinking' };
             const context = buildJevContext(agent, this.world, time, this.priceMultiplier, this.wageMultiplier, this.riskMultiplier);

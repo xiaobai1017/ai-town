@@ -14,9 +14,13 @@ import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, Ro
 
 export default function Home() {
   const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, setJevCooldown, replayAvailable, startReplay, stopReplay } = useGameLoop();
-  const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<TownLocation | null>(null);
   const [historyPair, setHistoryPair] = useState<[Agent, Agent] | null>(null);
+
+  // Always read the latest agent snapshot from gameState so the panel
+  // updates in real time without relying on stale object references.
+  const selectedAgent = selectedAgentId ? gameState.agents.find(a => a.id === selectedAgentId) ?? null : null;
 
   const handleShowHistory = (nameA: string, nameB: string) => {
     const a = gameState.agents.find(ag => ag.name === nameA);
@@ -158,7 +162,7 @@ export default function Home() {
               .map((agent, index) => (
                 <span 
                   key={agent.id} 
-                  onClick={() => setSelectedAgent(agent)}
+                  onClick={() => setSelectedAgentId(agent.id)}
                   className="flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm cursor-pointer hover:shadow-md transition-all"
                 >
                   <span className="text-xs font-black text-purple-600">#{index + 1}</span>
@@ -182,12 +186,12 @@ export default function Home() {
               world={gameState.world}
               agents={gameState.agents}
               onSelectAgent={(agent) => {
-                setSelectedAgent(agent);
+                if (agent) setSelectedAgentId(agent.id);
                 setSelectedLocation(null);
               }}
               onSelectLocation={(loc) => {
                 setSelectedLocation(loc);
-                setSelectedAgent(null);
+                setSelectedAgentId(null);
               }}
               time={gameState.time}
             />
@@ -210,7 +214,7 @@ export default function Home() {
         <AgentPanel
           agent={selectedAgent}
           allAgents={gameState.agents}
-          onClose={() => setSelectedAgent(null)}
+          onClose={() => setSelectedAgentId(null)}
           onShowHistory={(a, b) => setHistoryPair([a, b])}
         />
       )}
@@ -262,7 +266,7 @@ export default function Home() {
                   .map((a, index) => (
                   <div
                     key={a.id}
-                    onClick={() => setSelectedAgent(a)}
+                    onClick={() => setSelectedAgentId(a.id)}
                     className="flex justify-between items-center gap-4 text-sm border-b border-slate-800/50 pb-2 last:border-0 last:pb-0 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors group"
                   >
                     <div className="flex items-center gap-3">

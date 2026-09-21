@@ -69,6 +69,16 @@ TYPESAFE_DEFAULT_MODEL=jev-latest
 npm run dev
 ```
 
+## 服务端模拟
+
+本地配置默认将权威模拟放在 Next.js Node 服务端：
+
+```env
+NEXT_PUBLIC_SIMULATION_MODE=server
+```
+
+浏览器只负责接收 `/api/simulation` 的状态快照和发送控制命令；游戏时钟、居民、行为规则、对话、JEV 和财务状态都由服务端维护。因此切换浏览器 Tab 不会暂停模拟。多实例部署时应使用独立的常驻 Node 服务或共享状态存储；单进程部署适合本地开发和单实例运行。
+
 然后打开顶部工具栏中的 **JEV AI** 开关。对于普通 `IDLE` 居民，Jev 会从以下行动中选择一个：
 
 `WORK`、`EAT`、`SLEEP`、`SHOP`、`TREAT`、`BANK`、`WANDER`、`WAIT`

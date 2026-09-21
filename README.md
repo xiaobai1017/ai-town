@@ -69,6 +69,16 @@ Restart the development server after changing environment variables:
 npm run dev
 ```
 
+## Server-side simulation
+
+The default local configuration runs the authoritative simulation in the Next.js Node server:
+
+```env
+NEXT_PUBLIC_SIMULATION_MODE=server
+```
+
+The browser now renders snapshots from `/api/simulation` and sends control commands to the server. The server owns the game clock, residents, behavior rules, dialogue, JEV calls, and financial state, so switching browser tabs no longer pauses the simulation. In a multi-instance deployment, use a dedicated persistent Node service or shared state store; a single Next.js instance is suitable for local development and single-process deployments.
+
 Then enable the **JEV AI** checkbox in the top toolbar. For ordinary `IDLE` residents, Jev chooses one of:
 
 `WORK`, `EAT`, `SLEEP`, `SHOP`, `TREAT`, `BANK`, `WANDER`, `WAIT`
