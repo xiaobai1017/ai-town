@@ -13,7 +13,7 @@ import { Location as TownLocation } from "@/engine/World";
 import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, RotateCcw, Square } from "lucide-react";
 
 export default function Home() {
-  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, replayAvailable, startReplay, stopReplay } = useGameLoop();
+  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, setJevCooldown, replayAvailable, startReplay, stopReplay } = useGameLoop();
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<TownLocation | null>(null);
   const [historyPair, setHistoryPair] = useState<[Agent, Agent] | null>(null);
@@ -102,6 +102,16 @@ export default function Home() {
               <input type="checkbox" checked={gameState.jevEnabled} onChange={(event) => setJevEnabled(event.target.checked)} />
               JEV AI
             </label>
+            <div className="flex items-center gap-1 px-2 border-r border-slate-200" title="JEV decision cooldown per resident (game minutes). Higher = fewer AI calls.">
+              <div className="flex flex-col leading-tight">
+                <span className="text-[10px] text-slate-500 uppercase font-bold">JEV Interval</span>
+                <span className="text-xs font-black text-indigo-700">{gameState.jevCooldown}m</span>
+              </div>
+              <div className="flex flex-col ml-1">
+                <button onClick={() => setJevCooldown(gameState.jevCooldown + 5)} className="hover:text-indigo-600 p-0.5"><Plus size={10} /></button>
+                <button onClick={() => setJevCooldown(Math.max(1, gameState.jevCooldown - 5))} className="hover:text-rose-600 p-0.5"><Minus size={10} /></button>
+              </div>
+            </div>
             <div className="flex items-center gap-2 px-2 border-r border-slate-200">
               <Banknote size={16} className="text-emerald-600" />
               <div className="flex flex-col leading-tight">

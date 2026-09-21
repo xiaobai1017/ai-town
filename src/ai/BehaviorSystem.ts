@@ -12,6 +12,8 @@ export class BehaviorSystem {
     private jevEnabled = false;
     private jevPending = new Set<string>();
     private jevLastDecision = new Map<string, number>();
+    /** Game minutes between JEV decisions per resident. */
+    private jevCooldownMinutes = 30;
 
     constructor(world: World) {
         this.world = world;
@@ -24,6 +26,10 @@ export class BehaviorSystem {
     }
 
     setJevEnabled(enabled: boolean) { this.jevEnabled = enabled; }
+
+    setJevCooldownMinutes(minutes: number) {
+        this.jevCooldownMinutes = Math.max(1, minutes);
+    }
 
     update(agents: Agent[], time: number) {
         // Police checking for criminals
@@ -440,7 +446,7 @@ export class BehaviorSystem {
         // JEV only handles ordinary decisions. Safety-critical rules below remain local.
         if (this.jevEnabled && agent.state === 'IDLE' && agent.health >= 80 && agent.hunger <= 35 &&
             !this.jevPending.has(agent.id) &&
-            (this.jevLastDecision.get(agent.id) ?? -Infinity) <= time - 5) {
+            (this.jevLastDecision.get(agent.id) ?? -Infinity) <= time - this.jevCooldownMinutes) {
             this.jevPending.add(agent.id);
             agent.jevIntent = { type: 'THINKING', reason: 'JEV 正在分析下一步行动…', time, status: 'thinking' };
             const context = buildJevContext(agent, this.world, time, this.priceMultiplier, this.wageMultiplier, this.riskMultiplier);

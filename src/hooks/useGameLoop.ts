@@ -17,6 +17,7 @@ export interface GameState {
     wageLevel: number;
     riskLevel: number;
     jevEnabled: boolean;
+    jevCooldown: number; // Game minutes between JEV decisions per resident
     isReplaying: boolean;
 }
 
@@ -31,6 +32,7 @@ export function useGameLoop() {
         wageLevel: 1.0,
         riskLevel: 1.0
         ,jevEnabled: false,
+        jevCooldown: 30,
         isReplaying: false
     });
 
@@ -65,6 +67,7 @@ export function useGameLoop() {
             wageLevel: 1.0,
             riskLevel: 1.0
             ,jevEnabled: false,
+            jevCooldown: 30,
             isReplaying: false
         };
 
@@ -85,7 +88,7 @@ export function useGameLoop() {
                     setGameState({ ...stateRef.current });
                 } else {
                     const frame = restoreFrame(replay.frames[replay.index]);
-                    const nextState = { ...frame, isRunning: false, isReplaying: true };
+                    const nextState = { ...frame, isRunning: false, isReplaying: true, jevCooldown: stateRef.current.jevCooldown };
                     stateRef.current = nextState;
                     setGameState(nextState);
                     lastTimeRef.current = timestamp;
@@ -193,7 +196,7 @@ export function useGameLoop() {
         if (!record) return;
         replayRef.current = { frames: record.frames, index: 0 };
         const frame = restoreFrame(record.frames[0]);
-        const nextState = { ...frame, isRunning: false, isReplaying: true };
+        const nextState = { ...frame, isRunning: false, isReplaying: true, jevCooldown: stateRef.current.jevCooldown };
         stateRef.current = nextState;
         setGameState(nextState);
         lastTimeRef.current = performance.now();
@@ -280,6 +283,12 @@ export function useGameLoop() {
         setGameState(prev => ({ ...prev, jevEnabled: enabled }));
     };
 
+    const setJevCooldown = (minutes: number) => {
+        const clamped = Math.max(1, Math.round(minutes));
+        stateRef.current.jevCooldown = clamped;
+        setGameState(prev => ({ ...prev, jevCooldown: clamped }));
+    };
+
     return {
         gameState,
         togglePause,
@@ -290,7 +299,8 @@ export function useGameLoop() {
         setPriceLevel,
         setWageLevel,
         setRiskLevel
-        ,setJevEnabled,
+        ,setJevEnabled
+        ,setJevCooldown,
         replayAvailable,
         startReplay,
         stopReplay
