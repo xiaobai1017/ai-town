@@ -2,6 +2,7 @@ import { Agent, AgentState } from '../engine/Agent';
 import { World } from '../engine/World';
 import { planFinances } from './FinancialPlanner';
 import { callJev } from './jevDecisionCore';
+import { loadModelSettings } from '@/lib/modelSettings';
 
 export type JevActionType = 'WORK' | 'EAT' | 'SLEEP' | 'SHOP' | 'LIBRARY' | 'TREAT' | 'BANK' | 'WANDER' | 'WAIT';
 
@@ -91,16 +92,20 @@ export function parseJevAction(value: unknown): JevAction | null {
 }
 
 export async function requestJevDecision(context: JevDecisionContext): Promise<JevAction | null> {
+  const settings = loadModelSettings();
+
   // When running on the server (SimulationRuntime), call the shared core
   // directly instead of fetching our own HTTP route (relative URLs don't
   // resolve in Node). On the client, fall back to the HTTP route.
   if (typeof window === 'undefined') {
-    return callJev(context);
+    return callJev(context, settings.jev);
   }
   try {
     const response = await fetch('/api/jev/decision', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(context), signal: AbortSignal.timeout(6000)
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ context, jevConfig: settings.jev }),
+      signal: AbortSignal.timeout(6000)
     });
     if (!response.ok) return null;
     return parseJevAction(await response.json());

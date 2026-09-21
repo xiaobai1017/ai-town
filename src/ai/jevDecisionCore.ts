@@ -1,9 +1,21 @@
+/**
+ * JEV 决策核心模块
+ * @author hubin
+ */
+
 import { choice, TypeSafeClient } from '@typesafe-ai/sdk';
 import type { JevAction, JevDecisionContext } from './JevDecisionProvider';
+import type { JevConfig } from '@/lib/modelSettings';
 
-const apiKey = process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY;
-const client = apiKey
-  ? new TypeSafeClient({ apiKey, defaultModel: process.env.TYPESAFE_DEFAULT_MODEL || 'jev-latest', timeout: 5000, retry: { maxRetries: 0 } })
+const envApiKey = process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY;
+const defaultClient = envApiKey
+  ? new TypeSafeClient({
+      apiKey: envApiKey,
+      baseURL: process.env.TYPESAFE_BASE_URL,
+      defaultModel: process.env.TYPESAFE_DEFAULT_MODEL || 'jev-latest',
+      timeout: 5000,
+      retry: { maxRetries: 0 }
+    })
   : null;
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -19,8 +31,21 @@ const DESCRIPTIONS: Record<string, string> = {
 };
 
 /** Returns null if JEV is not configured or the request fails. */
-export async function callJev(context: JevDecisionContext): Promise<JevAction | null> {
-  if (!client) {
+export async function callJev(context: JevDecisionContext, overrideConfig?: Partial<JevConfig>): Promise<JevAction | null> {
+  const apiKey = overrideConfig?.apiKey?.trim() || envApiKey;
+  let activeClient = defaultClient;
+
+  if (overrideConfig?.apiKey?.trim()) {
+    activeClient = new TypeSafeClient({
+      apiKey: overrideConfig.apiKey.trim(),
+      baseURL: overrideConfig.baseUrl?.trim() || process.env.TYPESAFE_BASE_URL || undefined,
+      defaultModel: overrideConfig.model?.trim() || process.env.TYPESAFE_DEFAULT_MODEL || 'jev-latest',
+      timeout: 5000,
+      retry: { maxRetries: 0 }
+    });
+  }
+
+  if (!activeClient) {
     if (typeof window === 'undefined') console.warn('[JEV] callJev invoked but client is null (API key not loaded)');
     return null;
   }
@@ -34,7 +59,7 @@ export async function callJev(context: JevDecisionContext): Promise<JevAction | 
       .filter((type): type is string => Boolean(type)));
     const criteria = Object.fromEntries([...availableTypes].map(type => [type, DESCRIPTIONS[type] || 'A safe available action.']));
 
-    const result = await client.systemOne({
+    const result = await activeClient.systemOne({
       state: context as any as Record<string, any>,
       questions: {
         action: choice('Choose one available candidate. Hard constraints: keep health at or above objective.healthFloor, hunger at or below objective.hungerCeiling, and never spend objective.safeReserve. If objective.disposableFunds is negative, prefer WORK or BANK over charm activities. Otherwise maximize charm as quickly as possible; use SHOP when available and safe.', criteria)
@@ -54,6 +79,7 @@ export async function callJev(context: JevDecisionContext): Promise<JevAction | 
   }
 }
 
-export function isJevConfigured(): boolean {
-  return client !== null;
+export function isJevConfigured(overrideConfig?: Partial<JevConfig>): boolean {
+  if (overrideConfig?.apiKey?.trim()) return true;
+  return defaultClient !== null;
 }

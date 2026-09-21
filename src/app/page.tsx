@@ -7,16 +7,40 @@ import { ChatLog } from "@/components/ChatLog";
 import { AgentPanel } from "@/components/AgentPanel";
 import { HistoryModal } from "@/components/HistoryModal";
 import { LocationPanel } from "@/components/LocationPanel";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Agent } from "@/engine/Agent";
 import { Location as TownLocation } from "@/engine/World";
-import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, RotateCcw, Square } from "lucide-react";
+import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, RotateCcw, Square, Settings } from "lucide-react";
+import { SettingsModal } from "@/components/SettingsModal";
+import { loadModelSettings, AppModelSettings, SETTINGS_CHANGE_EVENT } from "@/lib/modelSettings";
 
 export default function Home() {
   const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, setJevCooldown, replayAvailable, startReplay, stopReplay } = useGameLoop();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<TownLocation | null>(null);
   const [historyPair, setHistoryPair] = useState<[Agent, Agent] | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
+  const [currentSettings, setCurrentSettings] = useState<AppModelSettings>(loadModelSettings());
+
+  useEffect(() => {
+    const initialSettings = loadModelSettings();
+    setCurrentSettings(initialSettings);
+    // 首次加载时同步至服务端 Node.js 运行时
+    fetch('/api/model/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(initialSettings),
+    }).catch(() => {});
+
+    const handleSettingsChange = (e: Event) => {
+      const customEvent = e as CustomEvent<AppModelSettings>;
+      if (customEvent.detail) {
+        setCurrentSettings(customEvent.detail);
+      }
+    };
+    window.addEventListener(SETTINGS_CHANGE_EVENT, handleSettingsChange);
+    return () => window.removeEventListener(SETTINGS_CHANGE_EVENT, handleSettingsChange);
+  }, []);
 
   // Always read the latest agent snapshot from gameState so the panel
   // updates in real time without relying on stale object references.
@@ -173,6 +197,21 @@ export default function Home() {
               ))
             }
           </div>
+
+          {/* Model Settings Button */}
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="flex items-center gap-2 bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 px-3 py-1.5 rounded-lg shadow-sm transition text-slate-700 hover:text-indigo-600 group"
+            title="点击配置对话大语言模型与JEV决策模型"
+          >
+            <Settings size={18} className="text-indigo-600 group-hover:rotate-45 transition-transform duration-200" />
+            <div className="flex flex-col text-left">
+              <span className="text-[9px] text-slate-400 font-bold uppercase leading-none">Model Config</span>
+              <span className="text-xs font-bold leading-tight max-w-[100px] truncate text-slate-700 group-hover:text-indigo-600">
+                {currentSettings.llm.model || 'Default'}
+              </span>
+            </div>
+          </button>
         </div>
       </header>
 
@@ -235,6 +274,18 @@ export default function Home() {
           onClose={() => setHistoryPair(null)}
         />
       )}
+
+      {/* Model Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        onSaved={(newSettings) => {
+          setCurrentSettings(newSettings);
+          if (newSettings.jev.enabled !== gameState.jevEnabled) {
+            setJevEnabled(newSettings.jev.enabled);
+          }
+        }}
+      />
 
       {/* Game Over Overlay - Charm Winner or Extinction */}
       {(gameState.agents.length > 0 && (gameState.agents.every(a => a.state === 'DEAD') || gameState.agents.some(a => a.charm >= 100))) && (
