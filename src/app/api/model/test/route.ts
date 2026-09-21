@@ -14,6 +14,13 @@ interface TestRequestBody {
   jevConfig?: JevConfig;
 }
 
+function sanitizeError(msg: string): string {
+  if (!msg) return '未知异常';
+  return msg
+    .replace(/apikey_[a-zA-Z0-9_]+/gi, '[REDACTED_API_KEY]')
+    .replace(/sk-[a-zA-Z0-9_-]+/gi, '[REDACTED_API_KEY]');
+}
+
 export async function POST(request: Request) {
   const startTime = Date.now();
 
@@ -48,7 +55,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
           success: false,
           latencyMs,
-          error: res.error,
+          error: sanitizeError(res.error),
         });
       }
 
@@ -94,7 +101,7 @@ export async function POST(request: Request) {
         return NextResponse.json({
           success: false,
           latencyMs,
-          error: err.message || 'JEV 调用失败',
+          error: sanitizeError(err.message || 'JEV 调用失败'),
         });
       }
 
@@ -112,7 +119,7 @@ export async function POST(request: Request) {
     return NextResponse.json({
       success: false,
       latencyMs,
-      error: error.name === 'AbortError' ? '连接请求超时 (12s)' : (error.message || '网络连接异常'),
+      error: error.name === 'AbortError' ? '连接请求超时 (12s)' : sanitizeError(error.message || '网络连接异常'),
     });
   }
 }
