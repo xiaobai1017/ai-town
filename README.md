@@ -1,111 +1,139 @@
-# 🏙️ AI Town Simulation
+# AI Town Simulation
 
-An interactive virtual town simulation powered by local Large Language Models (LLMs) and a robust behavioral engine. Agents with unique roles, personalities, and survival needs live, work, and interact in a dynamic grid-based world. Now featuring a new Charm system for social status competition!
+[中文文档](README.zh-CN.md)
 
-![Next.js](https://img.shields.io/badge/Next.js-16+-black?logo=next.js)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?logo=typescript)
-![Local LLM](https://img.shields.io/badge/Ollama-Qwen3-orange)
-![Charm System](https://img.shields.io/badge/Charm-Competition-purple)
+An interactive virtual-town simulator where residents work, eat, shop, talk, manage money, and respond to changing needs in a living grid-based world.
 
-## 🌟 Features
+The project combines deterministic local rules with optional TypeSafe Jev AI decisions. Jev suggests ordinary next actions; safety-critical behavior remains controlled by the local simulation engine.
 
-### 🧠 Advanced Behavioral AI
-*   **Survival Needs**: Agents manage hunger, health, and energy. Neglecting these can lead to starvation or illness.
-*   **Hunger System**: Optimized to take approximately 3 days to reach maximum hunger, allowing for more balanced gameplay.
-*   **Priority System**: Hunger now takes priority over all other needs, ensuring agents always seek food when hungry.
-*   **Daily Routines**: Built-in schedules for work (8 AM - 5 PM), leisure (5 PM - 10 PM), and sleep (10 PM - 8 AM).
-*   **Dynamic State Machine**: Agents transition between `IDLE`, `WORKING`, `EATING`, `BANKING`, `SHOPPING`, `TREATING`, and `CRIMINAL` states.
-*   **Unique Personalities**: Each resident has a specific role (Baker, Doctor, Police, etc.), distinct color, and emoji representation.
+## Features
 
-### 💰 Complex Economic System
-*   **Interactive Banking**: Agents deposit savings, earn interest, and take out emergency loans to survive.
-*   **Real-time Markets**: Buildings like the Bakery, Restaurant, and Mall have dynamic revenue tracking based on agent purchases.
-*   **Global Variables**: Live sliders to adjust **Wages**, **Price Levels**, and **Accident Risk** multipliers.
+- Resident needs: hunger, health, cash, savings, loans, and charm.
+- State machine: `IDLE`, `WORKING`, `EATING`, `BANKING`, `SHOPPING`, `TREATING`, `SLEEPING`, `CRIMINAL`, and more.
+- Schedules and economy: work hours, wages, prices, interest, loans, and business revenue.
+- Social simulation: local LLM conversations based on proximity, time, mood, and relationships.
+- Charm competition: shopping increases charm; reaching 100 ends the simulation and creates a final ranking.
+- Risk events: illness, workplace accidents, starvation, crime, arrests, and town-wide extinction.
+- Canvas grid map with buildings, pathfinding, and real-time resident movement.
+- Optional JEV AI: structured `jev-latest` decisions shown in each resident's inspector panel.
 
-### 👑 Charm System (New!)
-*   **Social Status**: Agents increase their charm level by shopping at the Mall.
-*   **Rankings**: Real-time charm leaderboard displays the top 3 residents with the highest social status.
-*   **Game End Condition**: The simulation ends when any resident reaches maximum charm (100 points).
-*   **Final Ranking**: Complete leaderboard at game end, including deceased residents, sorted by charm level.
-*   **Priority Shopping**: Wealthy agents with basic needs met will prioritize shopping to increase their social status.
+## Tech stack
 
-### 🗣️ Dynamic Social Engine
-*   **LLM Conversations**: Proximity-based interactions powered by local models (Ollama).
-*   **Context-Aware Dialogue**: Conversations now consider game time, agent mood, and relationship status.
-*   **Chat History**: Detailed logs of dialogues with the ability to view historical conversations between specific residents.
-*   **Behavioral Impact**: Conversations and social states are reflective of the agent's current surroundings and status.
+- Next.js 16.1.5 (App Router)
+- React 19 and TypeScript
+- Tailwind CSS 4 and Lucide React
+- HTML5 Canvas
+- Ollama with `qwen3:0.6b` for local dialogue
+- `@typesafe-ai/sdk` for server-side TypeSafe Jev requests
 
-### 🗺️ Visual Town Engine
-*   **Canvas Rendering**: High-performance HTML5 Canvas rendering for smooth movement and state visualization.
-*   **Grid World**: A 2D town map featuring specialized locations (Bank, Hospital, Mall, Houses, etc.).
-*   **Optimized Layout**: Park relocated to open space for better navigation and building placement.
-*   **Pathfinding**: Intelligent navigation for agents to reach their daily targets.
+## Quick start
 
-### 💀 The Tragedy System
-*   **Life & Death**: Random illness, workplace accidents, and starvation risks controlled by the global Risk Level.
-*   **Police & Crime**: Non-police agents may sporadically commit crimes, leading to arrests and jail time.
-*   **Extinction Event**: A dedicated UI overlay tracks the "Final Census" and cause of death if the entire town population passes away.
-*   **Death Inclusion**: Deceased residents still participate in the final charm rankings.
+### Requirements
 
-## 🛠️ Tech Stack
+- Node.js 20 or newer (required by the TypeSafe SDK)
+- npm
+- Ollama, if resident dialogue is enabled
 
-*   **Framework**: Next.js 16.1.5 (App Router)
-*   **Language**: TypeScript 5.0
-*   **State/Physics**: React Hooks + custom Behavioral Engine
-*   **Rendering**: HTML5 Canvas API
-*   **Styling**: TailwindCSS 4.0 + Lucide Icons
-*   **AI Core**: Ollama (Local LLM: Qwen3:0.6b)
+### Install and run
 
-## 🚀 Getting Started
-
-### 1. Prerequisites
-*   **Node.js**: 18.x or later.
-*   **Ollama**: Install from [ollama.com](https://ollama.com/).
-
-### 2. Configure Local LLM
-The simulation requires a local LLM to handle agent dialogues.
 ```bash
-# Pull the recommended model
-ollama run qwen3:0.6b
-```
-*The application connects to Ollama at `http://localhost:11434` by default.*
-
-### 3. Installation
-```bash
-# Clone the repository and install dependencies
 npm install
-
-# Start the development server
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) to view the simulation.
 
-## 📁 Project Structure
+Open <http://localhost:3000>.
 
-*   `src/engine/`: Core grid world (`World.ts`) and agent physics (`Agent.ts`).
-*   `src/ai/`: Decision-making (`BehaviorSystem.ts`) and NPC dialogue (`DialogueSystem.ts`).
-*   `src/components/`: UI components including the Game Canvas and Inspector Panels.
-*   `src/data/`: Town scripts, building definitions, and initial world state.
-*   `src/hooks/`: The `useGameLoop` hook that drives the entire simulation logic.
-*   `src/lib/`: LLM connectivity and configuration.
+### Configure Ollama
 
-## ⚙️ Simulation Controls
+```bash
+ollama run qwen3:0.6b
+```
 
-*   **Speed**: Toggle between 1x (Normal), 5x (Fast), and 20x (Super Fast) simulation speed.
-*   **Economy**: 
-    *   `Wages`: Higher wages increase agent income rates.
-    *   `Prices`: Increases the cost of food, luxury items, and medical care.
-    *   `Risk`: Multiplies the probability of sickness and sudden accidents.
-*   **Census**: Add or remove residents dynamically via the header controls.
-*   **Charm Rankings**: View real-time charm leaderboard in the header section.
+The default Ollama endpoint is `http://localhost:11434`.
 
-## 🎯 Game Objectives
+## Enable JEV AI
 
-1. **Survival**: Keep residents alive by ensuring they eat, work, and maintain their health.
-2. **Prosperity**: Help residents accumulate wealth through work and smart financial decisions.
-3. **Social Status**: Watch residents compete to increase their charm level through shopping.
-4. **Victory**: Be the first resident to reach maximum charm (100 points) and become the Charm Champion!
+JEV is opt-in. The simulation runs with local rules even when no API key is configured.
 
----
-*Created for experimenting with agentic behavior, local AI systems, and social status dynamics.*
+Create or edit `.env.local` in the project root:
 
+```env
+# Server-side only; never expose this key in client code
+TYPESAFE_API_KEY=your_typesafe_api_key
+TYPESAFE_DEFAULT_MODEL=jev-latest
+```
+
+Restart the development server after changing environment variables:
+
+```bash
+npm run dev
+```
+
+Then enable the **JEV AI** checkbox in the top toolbar. For ordinary `IDLE` residents, Jev chooses one of:
+
+`WORK`, `EAT`, `SLEEP`, `SHOP`, `TREAT`, `BANK`, `WANDER`, `WAIT`
+
+The resident inspector shows the selected action, destination, reason, and confidence. Timeouts, invalid responses, and API errors automatically fall back to local rules.
+
+### Safety boundary
+
+- The API key is read only by `/api/jev/decision` on the server.
+- Hunger, low health, arrests, pathfinding, and money validation stay local.
+- Never commit a real API key. `.env.local` is ignored by Git.
+
+## Commands
+
+```bash
+npm run dev       # Development server
+npm run build     # Production build
+npm run start     # Start production server
+npm run lint      # ESLint
+npx tsc --noEmit  # TypeScript check
+```
+
+## Controls
+
+- **Speed**: 1x, 5x, or 20x simulation speed.
+- **Wages / Prices / Risk**: tune the global economy and event risk.
+- **Census**: add or remove residents.
+- **JEV AI**: toggle AI decisions; disabling it uses local rules only.
+- **Resident inspector**: view status, finances, charm, conversations, and the latest JEV plan.
+
+## Project layout
+
+```text
+src/
+├─ ai/                         # Behavior, dialogue, and JEV providers
+├─ app/api/jev/decision/       # Server-side TypeSafe SDK route
+├─ components/                 # Map, controls, inspector, and rankings
+├─ engine/                     # World, agents, movement, and simulation
+├─ hooks/useGameLoop.ts        # React game loop and global state
+└─ lib/                        # External services and utilities
+```
+
+## Troubleshooting
+
+### `/api/jev/decision` returns 503
+
+The server did not load `TYPESAFE_API_KEY`. Check that `.env.local` is in the project root, verify the variable name, and restart Next.js.
+
+### `/api/jev/decision` returns 502
+
+The request reached the TypeSafe API but failed, timed out, or returned an invalid response. Check the development-server log for `JEV decision failed`, then verify the key, account access, and network.
+
+### Dialogue is not generated
+
+Make sure Ollama is running and the model is installed:
+
+```bash
+ollama list
+ollama run qwen3:0.6b
+```
+
+### Production build cannot download fonts
+
+`next/font` fetches Google Fonts during the build. In an offline environment, replace the remote font in `src/app/layout.tsx` with a local font or remove that dependency. This is unrelated to JEV.
+
+## Design goal
+
+AI Town explores a hybrid architecture: AI provides contextual judgment, while the simulation engine owns world rules, resource constraints, and safety guarantees.
