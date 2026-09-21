@@ -7,6 +7,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { World, TileType, Location as TownLocation } from '@/engine/World';
 import { Agent } from '@/engine/Agent';
 import { ZoomIn, ZoomOut, Move, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
 
 interface GameCanvasProps {
     world: World;
@@ -17,6 +18,7 @@ interface GameCanvasProps {
 }
 
 export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, time }: GameCanvasProps) {
+    const { t, language } = useI18n();
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const TILE_SIZE = 32;
@@ -138,7 +140,8 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
             ctx.font = 'bold 14px "Microsoft YaHei", "SimHei", sans-serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';
-            ctx.fillText(loc.name, loc.entry.x * TILE_SIZE + TILE_SIZE / 2, loc.entry.y * TILE_SIZE - 2);
+            const displayName = t(`building.${loc.name}`) || loc.name;
+            ctx.fillText(displayName, loc.entry.x * TILE_SIZE + TILE_SIZE / 2, loc.entry.y * TILE_SIZE - 2);
         });
 
         // Draw Agents
@@ -177,7 +180,7 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
             }
         });
 
-    }, [world, agents, time, view, canvasSize]);
+    }, [world, agents, time, view, canvasSize, language]);
 
     const [cursor, setCursor] = useState<'grab' | 'grabbing' | 'pointer'>('grab');
 
@@ -322,17 +325,17 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
                             <div className="p-1.5 bg-indigo-50 rounded-lg text-indigo-500">
                                 <Move size={13} />
                             </div>
-                            <span>拖拽可平移地图</span>
+                            <span>{t('map.dragToPan')}</span>
                         </div>
                         <div className="flex items-center gap-2.5 text-xs font-bold text-slate-600">
                             <div className="p-1.5 bg-amber-50 rounded-lg text-amber-500">
                                 <ZoomIn size={13} />
                             </div>
-                            <span>滚轮可缩放视野</span>
+                            <span>{t('map.wheelToZoom')}</span>
                         </div>
 
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">当前缩放</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">{t('map.currentZoom')}</span>
                             <span className="text-xs font-black text-indigo-600">{(view.zoom * 100).toFixed(0)}%</span>
                         </div>
 
@@ -343,10 +346,10 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
                                     setView(prev => ({ ...prev, zoom: Math.min(3, prev.zoom + 0.15) }));
                                 }}
                                 className="flex-1 flex items-center justify-center gap-1 p-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold transition"
-                                title="放大"
+                                title={t('map.zoomIn')}
                             >
                                 <ZoomIn size={12} />
-                                <span>放大</span>
+                                <span>{t('map.zoomIn')}</span>
                             </button>
                             <button
                                 onClick={(e) => {
@@ -354,10 +357,10 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
                                     setView(prev => ({ ...prev, zoom: Math.max(0.3, prev.zoom - 0.15) }));
                                 }}
                                 className="flex-1 flex items-center justify-center gap-1 p-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold transition"
-                                title="缩小"
+                                title={t('map.zoomOut')}
                             >
                                 <ZoomOut size={12} />
-                                <span>缩小</span>
+                                <span>{t('map.zoomOut')}</span>
                             </button>
                         </div>
 
@@ -367,10 +370,10 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
                                 setView({ x: 0, y: 0, zoom: 1 });
                             }}
                             className="w-full flex items-center justify-center gap-1.5 p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-xs font-bold transition"
-                            title="恢复默认视野"
+                            title={t('map.resetView')}
                         >
                             <RotateCcw size={12} />
-                            <span>重置视野</span>
+                            <span>{t('map.resetView')}</span>
                         </button>
                     </div>
                 )}

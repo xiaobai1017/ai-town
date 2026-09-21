@@ -13,11 +13,13 @@ import { LocationPanel } from "@/components/LocationPanel";
 import { useState, useEffect } from "react";
 import { Agent } from "@/engine/Agent";
 import { Location as TownLocation } from "@/engine/World";
-import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, RotateCcw, Square, Settings, X, Trophy } from "lucide-react";
+import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, RotateCcw, Square, Settings, X, Trophy, Languages } from "lucide-react";
 import { SettingsModal } from "@/components/SettingsModal";
 import { loadModelSettings, AppModelSettings, SETTINGS_CHANGE_EVENT } from "@/lib/modelSettings";
+import { useI18n } from "@/lib/i18n";
 
 export default function Home() {
+  const { language, setLanguage, t } = useI18n();
   const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, setJevCooldown, replayAvailable, startReplay, stopReplay, restartSimulation } = useGameLoop();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<TownLocation | null>(null);
@@ -78,10 +80,10 @@ export default function Home() {
       <header className="flex flex-wrap lg:flex-nowrap justify-between items-center mb-3 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 shrink-0 gap-3">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            AI Town Simulation
+            {t('header.title')}
           </h1>
           <p className="text-slate-500 text-sm">
-            Day {Math.floor(gameState.time / (24 * 60)) + 1}, {formatTime(gameState.time)}
+            {t('common.day', { day: Math.floor(gameState.time / (24 * 60)) + 1 })}, {formatTime(gameState.time)}
           </p>
         </div>
 
@@ -105,7 +107,7 @@ export default function Home() {
           </div>
 
           <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-100 p-1 rounded-lg">
-            <span className="px-2 font-medium">Speed: {speed}x</span>
+            <span className="px-2 font-medium">{t('header.speed')}: {speed}x</span>
             <button onClick={() => setSpeed(1)} className={`p-1 px-3 rounded ${speed === 1 ? 'bg-white shadow-sm' : ''}`}>1x</button>
             <button onClick={() => setSpeed(5)} className={`p-1 px-3 rounded ${speed === 5 ? 'bg-white shadow-sm' : ''}`}>5x</button>
             <button onClick={() => setSpeed(20)} className={`p-1 px-3 rounded ${speed === 20 ? 'bg-white shadow-sm' : ''}`}>20x</button>
@@ -114,19 +116,19 @@ export default function Home() {
           <div className="ml-4 flex items-center gap-3 bg-slate-100 p-1 rounded-lg">
             <div className="flex items-center gap-1 px-2 border-r border-slate-200">
               <User size={16} className="text-slate-500" />
-              <span className="text-sm font-medium text-slate-600">{gameState.agents.length} Residents</span>
+              <span className="text-sm font-medium text-slate-600">{gameState.agents.length} {t('header.residents')}</span>
             </div>
             <div className="flex gap-1">
               <button
                 onClick={removeAgent}
-                title="Remove resident"
+                title={t('header.removeResident')}
                 className="p-1 px-2 hover:bg-white hover:shadow-sm rounded transition text-slate-500 hover:text-red-500"
               >
                 <Minus size={16} />
               </button>
               <button
                 onClick={addAgent}
-                title="Add resident"
+                title={t('header.addResident')}
                 className="p-1 px-2 hover:bg-white hover:shadow-sm rounded transition text-slate-500 hover:text-indigo-600"
               >
                 <Plus size={16} />
@@ -135,13 +137,13 @@ export default function Home() {
           </div>
 
           <div className="ml-4 flex items-center gap-4 bg-slate-100 p-1 rounded-lg">
-            <label className="flex items-center gap-2 px-2 border-r border-slate-200 text-xs font-bold text-indigo-700" title="Use JEV for ordinary resident decisions">
+            <label className="flex items-center gap-2 px-2 border-r border-slate-200 text-xs font-bold text-indigo-700" title={t('header.jevAiTip')}>
               <input type="checkbox" checked={gameState.jevEnabled} onChange={(event) => setJevEnabled(event.target.checked)} />
-              JEV AI
+              {t('header.jevAi')}
             </label>
-            <div className="flex items-center gap-1 px-2 border-r border-slate-200" title="JEV decision cooldown per resident (game minutes). Higher = fewer AI calls.">
+            <div className="flex items-center gap-1 px-2 border-r border-slate-200" title={t('header.jevIntervalTip')}>
               <div className="flex flex-col leading-tight">
-                <span className="text-[10px] text-slate-500 uppercase font-bold">JEV Interval</span>
+                <span className="text-[10px] text-slate-500 uppercase font-bold">{t('header.jevInterval')}</span>
                 <span className="text-xs font-black text-indigo-700">{gameState.jevCooldown}m</span>
               </div>
               <div className="flex flex-col ml-1">
@@ -152,7 +154,7 @@ export default function Home() {
             <div className="flex items-center gap-2 px-2 border-r border-slate-200">
               <Banknote size={16} className="text-emerald-600" />
               <div className="flex flex-col leading-tight">
-                <span className="text-[10px] text-slate-500 uppercase font-bold">Wages</span>
+                <span className="text-[10px] text-slate-500 uppercase font-bold">{t('header.wages')}</span>
                 <span className="text-xs font-black text-slate-700">{gameState.wageLevel.toFixed(1)}x</span>
               </div>
               <div className="flex flex-col ml-1">
@@ -164,7 +166,7 @@ export default function Home() {
             <div className="flex items-center gap-2 px-2 border-r border-slate-200">
               <Coins size={16} className="text-amber-600" />
               <div className="flex flex-col leading-tight">
-                <span className="text-[10px] text-slate-500 uppercase font-bold">Prices</span>
+                <span className="text-[10px] text-slate-500 uppercase font-bold">{t('header.prices')}</span>
                 <span className="text-xs font-black text-slate-700">{gameState.priceLevel.toFixed(1)}x</span>
               </div>
               <div className="flex flex-col ml-1">
@@ -176,7 +178,7 @@ export default function Home() {
             <div className="flex items-center gap-2 px-2">
               <ShieldAlert size={16} className="text-indigo-600" />
               <div className="flex flex-col leading-tight">
-                <span className="text-[10px] text-slate-500 uppercase font-bold">Accident Risk</span>
+                <span className="text-[10px] text-slate-500 uppercase font-bold">{t('header.accidentRisk')}</span>
                 <span className="text-xs font-black text-slate-700">{gameState.riskLevel.toFixed(1)}x</span>
               </div>
               <div className="flex flex-col ml-1">
@@ -188,7 +190,7 @@ export default function Home() {
 
           {/* Charm Rankings */}
           <div className="flex items-center gap-2 text-sm text-slate-600 bg-purple-50 p-2 rounded-lg">
-            <span className="text-purple-700 font-bold">👑 Charm Rankings:</span>
+            <span className="text-purple-700 font-bold">{t('header.charmRankings')}:</span>
             {gameState.agents
               .sort((a, b) => b.charm - a.charm)
               .slice(0, 3)
@@ -215,19 +217,29 @@ export default function Home() {
               title="重新打开胜利结算榜单窗口"
             >
               <Trophy size={16} className="text-amber-600" />
-              <span>查看结算榜单</span>
+              <span>{t('header.winnerBadge')}</span>
             </button>
           )}
+
+          {/* Language Switch Button */}
+          <button
+            onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
+            className="flex items-center gap-1.5 bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 px-3 py-1.5 rounded-lg shadow-sm transition text-slate-700 hover:text-indigo-600 font-bold text-xs"
+            title={language === 'zh' ? '切换为英文 (Switch to English)' : 'Switch to Chinese (切换为中文)'}
+          >
+            <Languages size={16} className="text-indigo-600" />
+            <span>{language === 'zh' ? 'EN' : '中文'}</span>
+          </button>
 
           {/* Model Settings Button */}
           <button
             onClick={() => setIsSettingsOpen(true)}
             className="flex items-center gap-2 bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 px-3 py-1.5 rounded-lg shadow-sm transition text-slate-700 hover:text-indigo-600 group"
-            title="点击配置对话大语言模型与JEV决策模型"
+            title={t('settings.title')}
           >
             <Settings size={18} className="text-indigo-600 group-hover:rotate-45 transition-transform duration-200" />
             <div className="flex flex-col text-left">
-              <span className="text-[9px] text-slate-400 font-bold uppercase leading-none">Model Config</span>
+              <span className="text-[9px] text-slate-400 font-bold uppercase leading-none">{t('header.modelConfig')}</span>
               <span className="text-xs font-bold leading-tight max-w-[100px] truncate text-slate-700 group-hover:text-indigo-600">
                 {currentSettings.llm.model || 'Default'}
               </span>
@@ -316,7 +328,7 @@ export default function Home() {
             <button
               onClick={() => setIsGameOverDismissed(true)}
               className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition"
-              title="关闭结算窗口，查看小镇"
+              title={t('gameOver.stay')}
             >
               <X size={20} />
             </button>
@@ -329,18 +341,20 @@ export default function Home() {
               )}
             </div>
             <h2 className="text-3xl font-black text-white mb-2 tracking-tighter uppercase italic">
-              {gameState.agents.some(a => a.charm >= 100) ? 'Charm Champion' : 'Final Ranking'}
+              {gameState.agents.some(a => a.charm >= 100) ? t('gameOver.championTitle') : t('gameOver.rankingTitle')}
             </h2>
             <p className="text-slate-400 text-xs font-medium leading-relaxed mb-5">
               {gameState.agents.some(a => a.charm >= 100) ? (
-                `小镇居民魅力值已达上限！以下是本次模拟最终榜单：`
+                t('gameOver.championDesc')
               ) : (
-                `所有居民均已离开人世。以下是最终小镇排名：`
+                t('gameOver.allDeadDesc')
               )}
             </p>
 
             <div className="bg-slate-950/50 rounded-2xl border border-slate-800 p-4 max-h-60 overflow-y-auto mb-6 text-left">
-              <h3 className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-3 sticky top-0 bg-slate-900/90 py-1 backdrop-blur-sm border-b border-slate-800">Charm Rankings</h3>
+              <h3 className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-3 sticky top-0 bg-slate-900/90 py-1 backdrop-blur-sm border-b border-slate-800">
+                {t('gameOver.rankings')}
+              </h3>
               <div className="space-y-2.5">
                 {gameState.agents
                   .sort((a, b) => b.charm - a.charm)
@@ -359,15 +373,25 @@ export default function Home() {
                       </span>
                       <div>
                         <p className={`font-bold leading-none group-hover:text-white ${a.charm >= 100 ? 'text-yellow-400' : 'text-slate-200'}`}>
-                          {a.name}{a.charm >= 100 ? ' (Winner!)' : ''}
+                          {a.name}{a.charm >= 100 ? ` (${t('gameOver.winner')}!)` : ''}
                         </p>
-                        <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold">{a.role}</p>
+                        <p className="text-[10px] text-slate-500 mt-1 uppercase font-bold">
+                          {t('agent.roles.' + a.role) !== 'agent.roles.' + a.role ? t('agent.roles.' + a.role) : a.role}
+                        </p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`font-black text-xs ${a.charm >= 100 ? 'text-yellow-400' : 'text-purple-400'}`}>Charm: {a.charm.toFixed(2).replace(/\.00$/, '')}</p>
-                      {a.state === 'DEAD' && <p className="text-rose-400 font-bold text-[10px]">{a.deathCause}</p>}
-                      <p className="text-[10px] text-slate-500 font-mono italic">Survived: {(a.livingTicks / 60).toFixed(1)} hrs</p>
+                      <p className={`font-black text-xs ${a.charm >= 100 ? 'text-yellow-400' : 'text-purple-400'}`}>
+                        {t('agent.charm')}: {a.charm.toFixed(2).replace(/\.00$/, '')}
+                      </p>
+                      {a.state === 'DEAD' && (
+                        <p className="text-rose-400 font-bold text-[10px]">
+                          {a.deathCause ? (t('agent.deaths.' + a.deathCause) !== 'agent.deaths.' + a.deathCause ? t('agent.deaths.' + a.deathCause) : a.deathCause) : ''}
+                        </p>
+                      )}
+                      <p className="text-[10px] text-slate-500 font-mono italic">
+                        {t('gameOver.survived', { hours: (a.livingTicks / 60).toFixed(1) })}
+                      </p>
                     </div>
                   </div>
                 ))}
@@ -384,13 +408,13 @@ export default function Home() {
                 }}
                 className="bg-slate-100 hover:bg-white text-slate-950 font-black py-3 px-8 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-xl w-full text-xs"
               >
-                重新开始模拟 (Restart Simulation)
+                {t('gameOver.restart')}
               </button>
               <button
                 onClick={() => setIsGameOverDismissed(true)}
                 className="bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white font-bold py-2 px-6 rounded-xl transition text-xs w-full"
               >
-                关闭窗口，留在当前小镇查看
+                {t('gameOver.stay')}
               </button>
             </div>
           </div>

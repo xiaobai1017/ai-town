@@ -1,7 +1,12 @@
+/**
+ * 居民对话历史弹窗组件
+ * @author hubin
+ */
 
 import React from 'react';
 import { Agent } from '@/engine/Agent';
 import { X } from 'lucide-react';
+import { useI18n } from '@/lib/i18n';
 
 interface HistoryModalProps {
     agentA: Agent;
@@ -10,6 +15,7 @@ interface HistoryModalProps {
 }
 
 export function HistoryModal({ agentA, agentB, onClose }: HistoryModalProps) {
+    const { t, isZh } = useI18n();
     const history = agentA.conversationHistory[agentB.id] || [];
 
     return (
@@ -21,13 +27,19 @@ export function HistoryModal({ agentA, agentB, onClose }: HistoryModalProps) {
                             <span className="text-2xl z-10">{agentA.emoji}</span>
                             <span className="text-2xl">{agentB.emoji}</span>
                         </div>
-                        <h3 className="font-bold text-slate-800">
-                            {agentA.name} & {agentB.name}
-                        </h3>
+                        <div>
+                            <h3 className="font-bold text-slate-800">
+                                {agentA.name} & {agentB.name}
+                            </h3>
+                            <p className="text-[10px] text-slate-400 font-medium">
+                                {t('history.title')}
+                            </p>
+                        </div>
                     </div>
                     <button
                         onClick={onClose}
                         className="p-2 hover:bg-slate-200 rounded-full transition-colors text-slate-500"
+                        title={t('common.close')}
                     >
                         <X size={20} />
                     </button>
@@ -36,7 +48,7 @@ export function HistoryModal({ agentA, agentB, onClose }: HistoryModalProps) {
                 <div className="flex-1 overflow-y-auto p-4 space-y-4">
                     {history.length === 0 ? (
                         <div className="text-center py-10">
-                            <p className="text-slate-400 italic text-sm">No shared history yet...</p>
+                            <p className="text-slate-400 italic text-sm">{t('history.noDialogues')}</p>
                         </div>
                     ) : (
                         history.map((line, idx) => {
@@ -68,7 +80,7 @@ export function HistoryModal({ agentA, agentB, onClose }: HistoryModalProps) {
 
                 <div className="p-4 bg-slate-50 border-t border-slate-100 rounded-b-2xl">
                     <p className="text-xs text-center text-slate-400">
-                        Showing last {history.length} exchanges
+                        {t('history.totalDialogues', { count: history.length })}
                     </p>
                 </div>
             </div>

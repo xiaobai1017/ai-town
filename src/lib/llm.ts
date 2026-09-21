@@ -5,6 +5,7 @@
 
 import { loadModelSettings, LLMConfig } from './modelSettings';
 import { callLLM } from './llmCore';
+import { getLanguage, t } from './i18nCore';
 
 export async function generateResponse(
   model?: string,
@@ -29,7 +30,7 @@ export async function generateResponse(
         const errorMsg = `LLM Server Error: ${res.error}`;
         console.error(errorMsg);
         await logToServer(errorMsg);
-        return "I cannot think right now.";
+        return t('dialogue.fallbackThinking');
       }
       const result = res.text.trim();
       await logToServer(`LLM Response: ${result}`);
@@ -54,7 +55,7 @@ export async function generateResponse(
       const errorMsg = `LLM API Error: ${response.status} ${errJson.error || response.statusText}`;
       console.error(errorMsg);
       await logToServer(errorMsg);
-      return "I cannot think right now.";
+      return t('dialogue.fallbackThinking');
     }
 
     const data = await response.json();
@@ -68,7 +69,7 @@ export async function generateResponse(
   } catch (error) {
     console.error('LLM Fetch Error:', error);
     await logToServer(`LLM Fetch Error: ${String(error)}`);
-    return "Hello there!";
+    return t('dialogue.fallbackGreeting');
   }
 }
 

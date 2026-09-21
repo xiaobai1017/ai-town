@@ -28,6 +28,7 @@ import {
   saveModelSettings, 
   resetModelSettings 
 } from '@/lib/modelSettings';
+import { useI18n } from '@/lib/i18n';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -36,6 +37,7 @@ interface SettingsModalProps {
 }
 
 export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) {
+  const { t, isZh } = useI18n();
   const [activeTab, setActiveTab] = useState<'llm' | 'jev'>('llm');
   const [settings, setSettings] = useState<AppModelSettings>(loadModelSettings());
   const [showApiKey, setShowApiKey] = useState(false);
@@ -212,14 +214,14 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
               <Settings size={20} />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-800">AI 模型与服务设置</h2>
-              <p className="text-xs text-slate-500">配置模拟居民对话大模型与自主行为决策模型</p>
+              <h2 className="text-lg font-bold text-slate-800">{t('settings.title')}</h2>
+              <p className="text-xs text-slate-500">{t('settings.subtitle')}</p>
             </div>
           </div>
           <button 
             onClick={onClose}
             className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition"
-            title="关闭"
+            title={t('common.close')}
           >
             <X size={20} />
           </button>
@@ -236,7 +238,7 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
             }`}
           >
             <Bot size={18} />
-            大语言模型 (对话生成)
+            {t('settings.tabLlm')}
           </button>
           <button
             onClick={() => setActiveTab('jev')}
@@ -247,7 +249,7 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
             }`}
           >
             <BrainCircuit size={18} />
-            JEV 决策模型 (行为规划)
+            {t('settings.tabJev')}
           </button>
         </div>
 
@@ -547,7 +549,7 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg transition"
           >
             <RotateCcw size={14} />
-            恢复默认配置
+            {t('settings.resetDefaults')}
           </button>
 
           <div className="flex items-center gap-3">
@@ -556,7 +558,7 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
               onClick={onClose}
               className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-200/60 rounded-lg transition"
             >
-              取消
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -564,7 +566,7 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
               className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-sm hover:shadow transition"
             >
               <Save size={14} />
-              {saveToast ? '已保存！' : '保存设置'}
+              {saveToast ? (isZh ? '已保存！' : 'Saved!') : t('settings.saveConfig')}
             </button>
           </div>
         </div>

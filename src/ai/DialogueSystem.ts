@@ -1,7 +1,12 @@
+/**
+ * 居民对话生成系统（支持中英文多语言智能提示词与对话）
+ * @author hubin
+ */
 
 import { Agent } from '../engine/Agent';
 import { generateResponse } from '@/lib/llm';
 import { LLM_MODEL } from '@/lib/config';
+import { getLanguage, t } from '@/lib/i18nCore';
 
 export interface DialoguePacket {
     speaker: string;
@@ -44,27 +49,43 @@ export class DialogueSystem {
     }
 
     // Get agent's current mood based on health, hunger, and recent interactions
-    private getMood(agent: Agent): string {
-        const moods = [];
+    private getMood(agent: Agent, isZh: boolean): string {
+        const moods: string[] = [];
         
-        // Health-based moods
-        if (agent.health >= 90) moods.push("energetic", "vibrant", "lively");
-        else if (agent.health >= 70) moods.push("good", "fine", "well");
-        else if (agent.health >= 50) moods.push("tired", "weary", "fatigued");
-        else moods.push("unwell", "sick", "weak");
-        
-        // Hunger-based moods
-        if (agent.hunger >= 80) moods.push("hungry", "starving", "ravenous");
-        else if (agent.hunger >= 50) moods.push("peckish", "hungry");
-        else moods.push("satisfied", "full", "content");
-        
-        // Relationship-based moods
-        if (agent.lastSentiment === 'POS') moods.push("happy", "pleased", "joyful");
-        else if (agent.lastSentiment === 'NEG') moods.push("upset", "sad", "disappointed");
-        
-        // Random mood if no specific conditions
-        if (moods.length === 0) {
-            moods.push("neutral", "calm", "relaxed");
+        if (isZh) {
+            // Health-based moods (中文)
+            if (agent.health >= 90) moods.push("充满活力", "神清气爽", "精力充沛");
+            else if (agent.health >= 70) moods.push("良好", "平和", "惬意");
+            else if (agent.health >= 50) moods.push("略有疲惫", "有些困倦");
+            else moods.push("身体虚弱", "有些不适");
+
+            // Hunger-based moods (中文)
+            if (agent.hunger >= 80) moods.push("饥肠辘辘", "饥饿难耐");
+            else if (agent.hunger >= 50) moods.push("肚子有点饿", "想找点吃的");
+            else moods.push("心满意足", "吃得很饱");
+
+            // Relationship-based moods (中文)
+            if (agent.lastSentiment === 'POS') moods.push("心情愉悦", "非常开心");
+            else if (agent.lastSentiment === 'NEG') moods.push("有些低落", "略带沮丧");
+
+            if (moods.length === 0) moods.push("平静从容", "闲适自在");
+        } else {
+            // Health-based moods (English)
+            if (agent.health >= 90) moods.push("energetic", "vibrant", "lively");
+            else if (agent.health >= 70) moods.push("good", "fine", "well");
+            else if (agent.health >= 50) moods.push("tired", "weary", "fatigued");
+            else moods.push("unwell", "sick", "weak");
+
+            // Hunger-based moods (English)
+            if (agent.hunger >= 80) moods.push("hungry", "starving", "ravenous");
+            else if (agent.hunger >= 50) moods.push("peckish", "hungry");
+            else moods.push("satisfied", "full", "content");
+
+            // Relationship-based moods (English)
+            if (agent.lastSentiment === 'POS') moods.push("happy", "pleased", "joyful");
+            else if (agent.lastSentiment === 'NEG') moods.push("upset", "sad", "disappointed");
+
+            if (moods.length === 0) moods.push("neutral", "calm", "relaxed");
         }
         
         return moods[Math.floor(Math.random() * moods.length)];
@@ -72,85 +93,112 @@ export class DialogueSystem {
 
     /**
      * Expose a small, human-readable slice of the latest decision to dialogue.
-     * The model sees an intention, never raw API details or confidence metadata.
      */
-    private getDecisionHint(agent: Agent, include: boolean): string {
+    private getDecisionHint(agent: Agent, include: boolean, isZh: boolean): string {
         if (!include || !agent.jevIntent || agent.jevIntent.status === 'fallback' || agent.jevIntent.type === 'LOCAL_RULE') return '';
-        const labels: Record<string, string> = {
+        
+        if (isZh) {
+            const labelsZh: Record<string, string> = {
+                WORK: '努力工作赚钱',
+                EAT: '去餐厅找点好吃的补充体力',
+                SLEEP: '回家好好休息',
+                SHOP: '去商场大购物提升魅力',
+                LIBRARY: '去图书馆安静阅读提升个人素养',
+                TREAT: '去医院找医生检查治疗',
+                BANK: '去银行办理财务和资金存取',
+                WANDER: '在小镇街道上散步漫游',
+                WAIT: '稍作等待观察时机'
+            };
+            const plan = labelsZh[agent.jevIntent.type] || agent.jevIntent.type;
+            return `你当前的个人打算正是${plan}。如果时机合适可以自然聊到，但绝不要提及这是AI决策。`;
+        }
+
+        const labelsEn: Record<string, string> = {
             WORK: 'work and earn money', EAT: 'find food and recover', SLEEP: 'rest at home',
             SHOP: 'shop at the Mall to grow charm', LIBRARY: 'read at the Library to grow charm steadily',
             TREAT: 'visit the Hospital to recover', BANK: 'manage money at the Bank',
             WANDER: 'wander around town', WAIT: 'wait for a better opportunity'
         };
-        const plan = labels[agent.jevIntent.type] || agent.jevIntent.type.toLowerCase();
+        const plan = labelsEn[agent.jevIntent.type] || agent.jevIntent.type.toLowerCase();
         return `Your current personal plan is to ${plan}. You may mention it naturally if relevant, but do not describe it as an AI decision.`;
     }
 
     // Get random conversation topics based on roles, relationship, and time
-    private getRandomTopics(roleA: string, roleB: string, relationship: string, hour: number): string[] {
-        const allTopics = [];
+    private getRandomTopics(roleA: string, roleB: string, relationship: string, hour: number, isZh: boolean): string[] {
+        const allTopics: string[] = [];
         
-        // Role-specific topics
-        if (roleA === 'Baker' || roleB === 'Baker') {
-            if (hour < 10) {
-                allTopics.push("fresh bread", "morning baking", "breakfast pastries");
-            } else {
-                allTopics.push("day's specials", "baking techniques", "customer favorites");
+        if (isZh) {
+            if (roleA === 'Baker' || roleB === 'Baker') {
+                allTopics.push(hour < 10 ? "早炉新鲜面包" : "今日特色烘焙糕点");
             }
-        }
-        if (roleA === 'Librarian' || roleB === 'Librarian') {
-            allTopics.push("new books", "reading recommendations", "library events");
-        }
-        if (roleA === 'Doctor' || roleB === 'Doctor') {
-            allTopics.push("health tips", "community wellness", "medical advances");
-        }
-        if (roleA === 'Police' || roleB === 'Police') {
-            allTopics.push("town safety", "community watch", "recent incidents");
-        }
-        if (roleA === 'Mayor' || roleB === 'Mayor') {
-            allTopics.push("town improvements", "community events", "local politics");
-        }
-        if (roleA === 'Gardener' || roleB === 'Gardener') {
-            if (hour < 12) {
-                allTopics.push("morning gardening", "plant care", "seasonal blooms");
-            } else {
-                allTopics.push("garden maintenance", "landscape design", "flower arrangements");
+            if (roleA === 'Librarian' || roleB === 'Librarian') {
+                allTopics.push("新到的书卷典籍", "安静阅读的乐趣");
             }
-        }
-        if (roleA === 'Artist' || roleB === 'Artist') {
-            allTopics.push("art projects", "creative inspiration", "local art scene");
-        }
-        
-        // Relationship-based topics
-        if (relationship === "best friend") {
-            allTopics.push("personal life", "shared memories", "future plans");
-        } else if (relationship === "friend") {
-            allTopics.push("hobbies", "town news", "mutual interests");
+            if (roleA === 'Doctor' || roleB === 'Doctor') {
+                allTopics.push("换季健康保养", "居民身心状态");
+            }
+            if (roleA === 'Police' || roleB === 'Police') {
+                allTopics.push("小镇近日治安", "社区巡逻轶事");
+            }
+            if (roleA === 'Mayor' || roleB === 'Mayor') {
+                allTopics.push("小镇建设规划", "提升居民幸福感");
+            }
+            if (roleA === 'Gardener' || roleB === 'Gardener') {
+                allTopics.push("花园花期与繁花", "植被修剪打理");
+            }
+            if (roleA === 'Artist' || roleB === 'Artist') {
+                allTopics.push("艺术灵感与画作", "小镇光影之美");
+            }
+
+            if (relationship.includes('friend') || relationship.includes('友')) {
+                allTopics.push("近来心境与打算", "共同的美好回忆");
+            } else {
+                allTopics.push("小镇晴好天气", "街头新鲜见闻");
+            }
+
+            if (hour < 11) allTopics.push("晨光微风", "香浓早咖啡");
+            else if (hour < 15) allTopics.push("午餐打算", "午后闲适时光");
+            else if (hour < 19) allTopics.push("傍晚余晖", "晚餐规划");
+            else allTopics.push("小镇静谧夜色", "明日安排");
         } else {
-            allTopics.push("weather", "local events", "recent happenings");
+            if (roleA === 'Baker' || roleB === 'Baker') {
+                allTopics.push(hour < 10 ? "fresh bread" : "day's specials");
+            }
+            if (roleA === 'Librarian' || roleB === 'Librarian') {
+                allTopics.push("new books", "library events");
+            }
+            if (roleA === 'Doctor' || roleB === 'Doctor') {
+                allTopics.push("health tips", "medical advances");
+            }
+            if (roleA === 'Police' || roleB === 'Police') {
+                allTopics.push("town safety", "community watch");
+            }
+            if (roleA === 'Mayor' || roleB === 'Mayor') {
+                allTopics.push("town improvements", "local politics");
+            }
+            if (roleA === 'Gardener' || roleB === 'Gardener') {
+                allTopics.push("plant care", "seasonal blooms");
+            }
+            if (roleA === 'Artist' || roleB === 'Artist') {
+                allTopics.push("creative inspiration", "local art scene");
+            }
+
+            if (relationship.includes('friend')) {
+                allTopics.push("personal life", "shared memories");
+            } else {
+                allTopics.push("weather", "local events");
+            }
+
+            if (hour < 11) allTopics.push("morning coffee", "daily plans");
+            else if (hour < 15) allTopics.push("lunch plans", "midday activities");
+            else if (hour < 19) allTopics.push("afternoon tea", "evening plans");
+            else allTopics.push("late night", "tomorrow's plans");
         }
-        
-        // Time-specific topics (game time)
-        if (hour < 6) {
-            allTopics.push("late night", "sleep", "early morning plans");
-        } else if (hour < 10) {
-            allTopics.push("morning coffee", "breakfast", "daily plans", "commute", "work start");
-        } else if (hour < 14) {
-            allTopics.push("lunch plans", "work progress", "midday activities", "meeting", "projects");
-        } else if (hour < 18) {
-            allTopics.push("afternoon tea", "workday", "evening plans", "shopping", "errands");
-        } else if (hour < 22) {
-            allTopics.push("dinner", "evening activities", "tomorrow's plans", "relaxation", "entertainment");
-        } else {
-            allTopics.push("late night", "sleep", "rest", "tomorrow's plans");
-        }
-        
-        // Shuffle and return up to 3 topics
+
         this.shuffleArray(allTopics);
         return allTopics.slice(0, Math.min(3, allTopics.length));
     }
 
-    // Helper method to shuffle arrays
     private shuffleArray(array: any[]): void {
         for (let i = array.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
@@ -163,55 +211,93 @@ export class DialogueSystem {
         a.state = 'TALKING';
         b.state = 'TALKING';
 
-        // Placeholder while generating
-        a.conversation = "...";
-        b.conversation = "...";
+        // Set high TTL so agents stay in place for a few frames while LLM responds
         a.conversationTTL = 100;
         b.conversationTTL = 100;
 
         try {
+            const lang = getLanguage();
+            const isZh = lang === 'zh';
+
             const intimacyA = a.relationships[b.id] || 0;
             const intimacyB = b.relationships[a.id] || 0;
 
-            const relationshipA = intimacyA > 80 ? "best friend" : intimacyA > 40 ? "friend" : "acquaintance";
-            const relationshipB = intimacyB > 80 ? "best friend" : intimacyB > 40 ? "friend" : "acquaintance";
+            const relationshipA = isZh
+                ? (intimacyA > 80 ? "挚友" : intimacyA > 40 ? "朋友" : "熟人")
+                : (intimacyA > 80 ? "best friend" : intimacyA > 40 ? "friend" : "acquaintance");
+
+            const relationshipB = isZh
+                ? (intimacyB > 80 ? "挚友" : intimacyB > 40 ? "朋友" : "熟人")
+                : (intimacyB > 80 ? "best friend" : intimacyB > 40 ? "friend" : "acquaintance");
+
+            const descA = isZh ? (t(`agent.descriptions.${a.name}`) || a.description) : a.description;
+            const descB = isZh ? (t(`agent.descriptions.${b.name}`) || b.description) : b.description;
+            const roleA = isZh ? (t(`agent.roles.${a.role}`) || a.role) : a.role;
+            const roleB = isZh ? (t(`agent.roles.${b.role}`) || b.role) : b.role;
 
             const historyA = a.conversationHistory[b.id] || [];
-            const historyStrA = historyA.length > 0 ? `Your past interactions with ${b.name}: ${historyA.join('; ')}.` : '';
+            const historyStrA = historyA.length > 0 
+                ? (isZh ? `你们以往的交流片段：${historyA.join('；')}` : `Your past interactions with ${b.name}: ${historyA.join('; ')}.`)
+                : '';
 
-            // Get game time context (gameTime is in minutes)
             const hour = Math.floor(gameTime / 60) % 24;
             const minute = gameTime % 60;
-            const timeOfDay = hour < 6 ? "early morning" : hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
-            const timeDescription = `${hour}:${minute.toString().padStart(2, '0')} ${timeOfDay}`;
+            const timeDescZh = hour < 6 ? `凌晨 ${hour}:${minute}` : hour < 12 ? `上午 ${hour}:${minute}` : hour < 18 ? `下午 ${hour}:${minute}` : `傍晚 ${hour}:${minute}`;
+            const timeDescEn = `${hour}:${minute.toString().padStart(2, '0')} ${hour < 6 ? "early morning" : hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"}`;
+            const timeDescription = isZh ? timeDescZh : timeDescEn;
 
-            // Add random conversation topics based on relationship, roles, and time
-            const topics = this.getRandomTopics(a.role, b.role, relationshipA, hour);
-            const topicHint = topics.length > 0 ? `Consider topics like: ${topics.join(', ')}.` : '';
-            // Only some conversations carry planning context, keeping dialogue varied.
+            const topics = this.getRandomTopics(a.role, b.role, relationshipA, hour, isZh);
+            const topicHint = topics.length > 0 
+                ? (isZh ? `可以聊到的话题例如：${topics.join('、')}。` : `Consider topics like: ${topics.join(', ')}.`)
+                : '';
+
             const includeDecisionHints = Math.random() < 0.6;
-            const decisionHintA = this.getDecisionHint(a, includeDecisionHints);
-            const decisionHintB = this.getDecisionHint(b, includeDecisionHints);
+            const decisionHintA = this.getDecisionHint(a, includeDecisionHints, isZh);
+            const decisionHintB = this.getDecisionHint(b, includeDecisionHints, isZh);
 
-            const promptA = `You are ${a.name} (${a.description}). You are feeling ${this.getMood(a)}. 
-            It's ${timeDescription}, and you meet ${b.name} (${b.description}), who is your ${relationshipA}. 
-            ${historyStrA} 
-            ${topicHint}
-            ${decisionHintA}
-            Say something vivid and expressive (max 15 words) matching your personality, current mood, and the time of day.`;
+            let promptA = '';
+            if (isZh) {
+                promptA = `你是${a.name}（${descA}），职务是${roleA}。你当前心情${this.getMood(a, true)}。
+现在是小镇时间${timeDescription}，你迎面遇到了你的${relationshipA}${b.name}（${descB}）。
+${historyStrA}
+${topicHint}
+${decisionHintA}
+请用生动自然简练的口语中文说一句话（严格控制在20个字以内），符合你的身份性格、当前心情与小镇时间。`;
+            } else {
+                promptA = `You are ${a.name} (${a.description}). You are feeling ${this.getMood(a, false)}. 
+It's ${timeDescription}, and you meet ${b.name} (${b.description}), who is your ${relationshipA}. 
+${historyStrA} 
+${topicHint}
+${decisionHintA}
+Say something vivid and expressive (max 15 words) matching your personality, current mood, and the time of day.`;
+            }
+
             const textA_Raw = await generateResponse(LLM_MODEL, promptA);
             const textA_Final = textA_Raw.trim();
             console.log('Agent A said:', textA_Final);
 
             const historyB = b.conversationHistory[a.id] || [];
-            const historyStrB = historyB.length > 0 ? `Your past interactions with ${a.name}: ${historyB.join('; ')}.` : '';
+            const historyStrB = historyB.length > 0 
+                ? (isZh ? `你们以往的交流片段：${historyB.join('；')}` : `Your past interactions with ${a.name}: ${historyB.join('; ')}.`)
+                : '';
 
-            const promptB = `You are ${b.name} (${b.description}). You are feeling ${this.getMood(b)}. 
-            It's ${timeDescription}, and ${a.name} (${a.description}), your ${relationshipB}, said: "${textA_Final}". 
-            ${historyStrB}
-            ${decisionHintB}
-            Reply vividly and expressively (max 15 words) matching your personality, current mood, and the time of day. 
-            Also, strictly start with a tag: [POS], [NEU], or [NEG] based on your reaction.`;
+            let promptB = '';
+            if (isZh) {
+                promptB = `你是${b.name}（${descB}），职务是${roleB}。你当前心情${this.getMood(b, true)}。
+现在是小镇时间${timeDescription}，你的${relationshipB}${a.name}对你说：“${textA_Final}”。
+${historyStrB}
+${decisionHintB}
+请用生动口语中文回应（严格控制在20个字以内），契合你的性格与当前心情。
+【重要规则】必须且只能在回复最开头加上一个情感标签：[POS]（满意/开心/赞同）、[NEU]（平淡/中立）或 [NEG]（不满/生气/反感）。例如：[POS] 早上好呀！今天阳光真不错。`;
+            } else {
+                promptB = `You are ${b.name} (${b.description}). You are feeling ${this.getMood(b, false)}. 
+It's ${timeDescription}, and ${a.name} (${a.description}), your ${relationshipB}, said: "${textA_Final}". 
+${historyStrB}
+${decisionHintB}
+Reply vividly and expressively (max 15 words) matching your personality, current mood, and the time of day. 
+Also, strictly start with a tag: [POS], [NEU], or [NEG] based on your reaction.`;
+            }
+
             const textB_Raw = await generateResponse(LLM_MODEL, promptB);
 
             let sentiment: 'POS' | 'NEG' | 'NEU' = 'NEU';
