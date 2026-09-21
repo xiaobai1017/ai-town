@@ -15,6 +15,7 @@ export interface GameState {
     priceLevel: number;
     wageLevel: number;
     riskLevel: number;
+    jevEnabled: boolean;
 }
 
 export function useGameLoop() {
@@ -27,6 +28,7 @@ export function useGameLoop() {
         priceLevel: 1.0,
         wageLevel: 1.0,
         riskLevel: 1.0
+        ,jevEnabled: false
     });
 
     const stateRef = useRef<GameState>(gameState);
@@ -53,6 +55,7 @@ export function useGameLoop() {
             priceLevel: 1.0,
             wageLevel: 1.0,
             riskLevel: 1.0
+            ,jevEnabled: false
         };
 
         setGameState(initialState);
@@ -209,6 +212,12 @@ export function useGameLoop() {
         setGameState(prev => ({ ...prev, riskLevel: val }));
     };
 
+    const setJevEnabled = (enabled: boolean) => {
+        stateRef.current.jevEnabled = enabled;
+        behaviorSystemRef.current?.setJevEnabled(enabled);
+        setGameState(prev => ({ ...prev, jevEnabled: enabled }));
+    };
+
     return {
         gameState,
         togglePause,
@@ -219,5 +228,6 @@ export function useGameLoop() {
         setPriceLevel,
         setWageLevel,
         setRiskLevel
+        ,setJevEnabled
     };
 }

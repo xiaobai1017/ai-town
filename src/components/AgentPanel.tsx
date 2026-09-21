@@ -59,6 +59,23 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                     </div>
                 </div>
 
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                    <div className="flex items-center justify-between">
+                        <span className="font-semibold text-indigo-700 text-sm">JEV Decision</span>
+                        {agent.jevIntent?.status === 'thinking' && <span className="text-[10px] font-bold text-indigo-500 animate-pulse">THINKING</span>}
+                    </div>
+                    {agent.jevIntent ? (
+                        <>
+                            <p className="mt-1 text-sm font-bold text-slate-800">
+                                {agent.jevIntent.type}{agent.jevIntent.location ? ` → ${agent.jevIntent.location}` : ''}
+                            </p>
+                            {agent.jevIntent.reason && <p className="mt-1 text-xs text-slate-600">{agent.jevIntent.reason}</p>}
+                        </>
+                    ) : (
+                        <p className="mt-1 text-xs text-slate-500">等待 JEV 决策（开启 JEV AI 后显示）</p>
+                    )}
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                     <div>
                         <span className="font-semibold text-slate-500 text-sm">Status</span>

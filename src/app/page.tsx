@@ -13,7 +13,7 @@ import { Location as TownLocation } from "@/engine/World";
 import { Play, Pause, FastForward, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert } from "lucide-react";
 
 export default function Home() {
-  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel } = useGameLoop();
+  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled } = useGameLoop();
   const [selectedAgent, setSelectedAgent] = useState<Agent | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<TownLocation | null>(null);
   const [historyPair, setHistoryPair] = useState<[Agent, Agent] | null>(null);
@@ -89,6 +89,10 @@ export default function Home() {
           </div>
 
           <div className="ml-4 flex items-center gap-4 bg-slate-100 p-1 rounded-lg">
+            <label className="flex items-center gap-2 px-2 border-r border-slate-200 text-xs font-bold text-indigo-700" title="Use JEV for ordinary resident decisions">
+              <input type="checkbox" checked={gameState.jevEnabled} onChange={(event) => setJevEnabled(event.target.checked)} />
+              JEV AI
+            </label>
             <div className="flex items-center gap-2 px-2 border-r border-slate-200">
               <Banknote size={16} className="text-emerald-600" />
               <div className="flex flex-col leading-tight">

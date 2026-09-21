@@ -1,12 +1,16 @@
 
 import { Agent, AgentState } from '../engine/Agent';
 import { World, Location } from '../engine/World';
+import { buildJevContext, requestJevDecision, JevAction } from './JevDecisionProvider';
 
 export class BehaviorSystem {
     world: World;
     priceMultiplier: number = 1.0;
     wageMultiplier: number = 1.0;
     riskMultiplier: number = 1.0; // Control probability of accidents/illness
+    private jevEnabled = false;
+    private jevPending = new Set<string>();
+    private jevLastDecision = new Map<string, number>();
 
     constructor(world: World) {
         this.world = world;
@@ -17,6 +21,8 @@ export class BehaviorSystem {
         this.wageMultiplier = wage;
         this.riskMultiplier = risk;
     }
+
+    setJevEnabled(enabled: boolean) { this.jevEnabled = enabled; }
 
     update(agents: Agent[], time: number) {
         // Police checking for criminals
@@ -409,6 +415,21 @@ export class BehaviorSystem {
         const hour = Math.floor(time / 60) % 24;
         const isBankOpen = hour >= 9 && hour < 18;
 
+        // JEV only handles ordinary decisions. Safety-critical rules below remain local.
+        if (this.jevEnabled && agent.state === 'IDLE' && !this.jevPending.has(agent.id) &&
+            (this.jevLastDecision.get(agent.id) ?? -Infinity) <= time - 5) {
+            this.jevPending.add(agent.id);
+            agent.jevIntent = { type: 'THINKING', reason: 'JEV 正在分析下一步行动…', time, status: 'thinking' };
+            const context = buildJevContext(agent, this.world, time, this.priceMultiplier, this.wageMultiplier, this.riskMultiplier);
+            void requestJevDecision(context).then(action => {
+                this.jevPending.delete(agent.id);
+                this.jevLastDecision.set(agent.id, time);
+                if (action) this.applyJevAction(agent, action, agentIndex, allAgents, time);
+                else agent.jevIntent = { type: 'LOCAL_RULE', reason: 'JEV 暂无可用结果，使用本地规则。', time, status: 'fallback' };
+            });
+            return;
+        }
+
         if (agent.state === 'BANKING') {
             if (!isBankOpen) {
                 agent.state = 'IDLE';
@@ -545,6 +566,27 @@ export class BehaviorSystem {
             } else if (agent.state === 'IDLE' && Math.random() < 0.02) {
                 this.wander(agent);
             }
+        }
+    }
+
+    private applyJevAction(agent: Agent, action: JevAction, agentIndex: number, allAgents: Agent[], time: number) {
+        agent.jevIntent = { type: action.type, location: action.location, reason: action.reason, time, status: 'planned' };
+        const destinations: Record<string, [string, AgentState]> = {
+            WORK: [action.location || this.getWorkLocation(agent), 'WORKING'],
+            EAT: [action.location || 'Restaurant', 'EATING'],
+            SLEEP: [action.location || 'My House', 'SLEEPING'],
+            SHOP: [action.location || 'Mall', 'SHOPPING'],
+            TREAT: [action.location || 'Hospital', 'TREATING'],
+            BANK: [action.location || 'Bank', 'BANKING']
+        };
+        if (action.type === 'WANDER') return this.wander(agent);
+        if (action.type === 'WAIT') return;
+        const destination = destinations[action.type];
+        if (!destination || !this.world.locations.some(location => location.name === destination[0])) return;
+        this.ensureAtLocation(agent, agentIndex, destination[0], destination[1], allAgents);
+        if (action.reason) {
+            agent.conversation = action.reason;
+            agent.conversationTTL = 30;
         }
     }
 

@@ -17,6 +17,14 @@ export interface Transaction {
     timestamp: number;
 }
 
+export interface JevIntent {
+    type: string;
+    location?: string;
+    reason?: string;
+    time: number;
+    status: 'thinking' | 'planned' | 'fallback';
+}
+
 export class Agent {
     id: string;
     name: string;
@@ -47,6 +55,8 @@ export class Agent {
     deathTime?: number;
     livingTicks: number = 0;
     charm: number = 0; // 0-100, charm level from shopping and social status
+    /** Latest JEV plan, shown in the resident inspector. */
+    jevIntent?: JevIntent;
     lastShoppingAmount: number = 0; // Track last shopping amount for charm calculation
     arrestTime?: number; // Time when agent was arrested
 
