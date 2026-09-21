@@ -1,8 +1,12 @@
+/**
+ * 游戏画布渲染组件
+ * @author hubin
+ */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { World, TileType, Location as TownLocation } from '@/engine/World';
 import { Agent } from '@/engine/Agent';
-import { ZoomIn, ZoomOut, Move, ChevronDown, ChevronUp } from 'lucide-react';
+import { ZoomIn, ZoomOut, Move, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 
 interface GameCanvasProps {
     world: World;
@@ -13,15 +17,40 @@ interface GameCanvasProps {
 }
 
 export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, time }: GameCanvasProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const TILE_SIZE = 32;
-    const VIEWPORT_WIDTH = 800;
-    const VIEWPORT_HEIGHT = 600;
 
+    const [canvasSize, setCanvasSize] = useState({ width: 1100, height: 720 });
     const [view, setView] = useState({ x: 0, y: 0, zoom: 1 });
     const [isDragging, setIsDragging] = useState(false);
     const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
     const [showControls, setShowControls] = useState(false);
+
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const updateSize = () => {
+            if (containerRef.current) {
+                const w = Math.floor(containerRef.current.clientWidth);
+                const h = Math.floor(containerRef.current.clientHeight);
+                if (w > 0 && h > 0) {
+                    setCanvasSize(prev => (prev.width === w && prev.height === h ? prev : { width: w, height: h }));
+                }
+            }
+        };
+
+        updateSize();
+        const ro = new ResizeObserver(() => {
+            updateSize();
+        });
+        ro.observe(containerRef.current);
+        window.addEventListener('resize', updateSize);
+
+        return () => {
+            ro.disconnect();
+            window.removeEventListener('resize', updateSize);
+        };
+    }, []);
 
     const getTileColor = (type: TileType) => {
         switch (type) {
@@ -148,7 +177,7 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
             }
         });
 
-    }, [world, agents, time, view]);
+    }, [world, agents, time, view, canvasSize]);
 
     const [cursor, setCursor] = useState<'grab' | 'grabbing' | 'pointer'>('grab');
 
@@ -253,58 +282,96 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
     };
 
     return (
-        <div className="relative group overflow-hidden rounded-xl shadow-2xl border-4 border-white">
+        <div ref={containerRef} className="relative group overflow-hidden rounded-xl shadow-2xl border-4 border-white w-full h-full flex-1">
             <canvas
                 ref={canvasRef}
-                width={VIEWPORT_WIDTH}
-                height={VIEWPORT_HEIGHT}
+                width={canvasSize.width}
+                height={canvasSize.height}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
                 onMouseLeave={handleMouseUp}
                 onWheel={handleWheel}
                 onClick={handleClick}
-                style={{ cursor: cursor }}
-                className={`bg-slate-200 transition-transform duration-75`}
+                style={{ cursor: cursor, width: `${canvasSize.width}px`, height: `${canvasSize.height}px` }}
+                className="bg-slate-200 block"
             />
             {/* Legend / Overlay Controls */}
-            <div className={`absolute top-4 left-4 bg-white/90 backdrop-blur-md rounded-xl border border-white/50 shadow-2xl transition-all duration-300 overflow-hidden ${showControls ? 'w-48 p-4' : 'w-12 h-12 flex items-center justify-center p-0'}`}>
+            <div className={`absolute top-4 left-4 bg-white/95 backdrop-blur-md rounded-xl border border-white/60 shadow-2xl transition-all duration-300 overflow-hidden z-10 ${showControls ? 'w-52 p-3' : 'w-11 h-11 flex items-center justify-center p-0'}`}>
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
                         setShowControls(!showControls);
                     }}
-                    className={`flex items-center justify-between w-full hover:bg-slate-100 rounded-lg transition-colors ${showControls ? 'mb-3 pb-2 border-b border-slate-100' : 'h-full w-full flex items-center justify-center'}`}
+                    className={`flex items-center justify-between w-full hover:bg-slate-100 rounded-lg transition-colors ${showControls ? 'mb-2.5 pb-2 border-b border-slate-100' : 'h-full w-full flex items-center justify-center'}`}
                     title={showControls ? "Collapse Controls" : "Show Controls"}
                 >
                     {showControls ? (
                         <>
-                            <span className="text-[10px] uppercase font-black text-slate-400 tracking-widest">Map Controls</span>
+                            <span className="text-[10px] uppercase font-black text-slate-500 tracking-widest">Map Controls</span>
                             <ChevronUp size={16} className="text-slate-500" />
                         </>
                     ) : (
-                        <Move size={20} className="text-slate-600" />
+                        <Move size={18} className="text-slate-600" />
                     )}
                 </button>
 
                 {showControls && (
-                    <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                        <div className="flex items-center gap-3 text-xs font-bold text-slate-600">
-                            <div className="p-2 bg-indigo-50 rounded-lg text-indigo-500">
-                                <Move size={14} />
+                    <div className="space-y-2.5 animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="flex items-center gap-2.5 text-xs font-bold text-slate-600">
+                            <div className="p-1.5 bg-indigo-50 rounded-lg text-indigo-500">
+                                <Move size={13} />
                             </div>
-                            <span>Drag to Pan</span>
+                            <span>拖拽可平移地图</span>
                         </div>
-                        <div className="flex items-center gap-3 text-xs font-bold text-slate-600">
-                            <div className="p-2 bg-amber-50 rounded-lg text-amber-500">
-                                <ZoomIn size={14} />
+                        <div className="flex items-center gap-2.5 text-xs font-bold text-slate-600">
+                            <div className="p-1.5 bg-amber-50 rounded-lg text-amber-500">
+                                <ZoomIn size={13} />
                             </div>
-                            <span>Wheel to Zoom</span>
+                            <span>滚轮可缩放视野</span>
                         </div>
+
                         <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">Current Zoom</span>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-tighter">当前缩放</span>
                             <span className="text-xs font-black text-indigo-600">{(view.zoom * 100).toFixed(0)}%</span>
                         </div>
+
+                        <div className="flex gap-1.5 pt-1">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setView(prev => ({ ...prev, zoom: Math.min(3, prev.zoom + 0.15) }));
+                                }}
+                                className="flex-1 flex items-center justify-center gap-1 p-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold transition"
+                                title="放大"
+                            >
+                                <ZoomIn size={12} />
+                                <span>放大</span>
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setView(prev => ({ ...prev, zoom: Math.max(0.3, prev.zoom - 0.15) }));
+                                }}
+                                className="flex-1 flex items-center justify-center gap-1 p-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-xs font-bold transition"
+                                title="缩小"
+                            >
+                                <ZoomOut size={12} />
+                                <span>缩小</span>
+                            </button>
+                        </div>
+
+                        <button
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setView({ x: 0, y: 0, zoom: 1 });
+                            }}
+                            className="w-full flex items-center justify-center gap-1.5 p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded text-xs font-bold transition"
+                            title="恢复默认视野"
+                        >
+                            <RotateCcw size={12} />
+                            <span>重置视野</span>
+                        </button>
                     </div>
                 )}
             </div>

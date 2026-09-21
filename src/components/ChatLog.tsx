@@ -1,3 +1,7 @@
+/**
+ * 城镇聊天动态记录组件
+ * @author hubin
+ */
 
 import React, { useEffect, useRef } from 'react';
 import { DialoguePacket } from '@/ai/DialogueSystem';
@@ -17,8 +21,8 @@ export function ChatLog({ logs, onShowHistory }: ChatLogProps) {
     }, [logs]);
 
     return (
-        <div className="w-80 h-[600px] border border-slate-200 rounded-lg bg-white flex flex-col shadow-sm">
-            <div className="p-3 bg-slate-100 border-b border-slate-200 font-semibold text-slate-700">
+        <div className="w-full h-full border border-slate-200 rounded-lg bg-white flex flex-col shadow-sm">
+            <div className="p-3 bg-slate-100 border-b border-slate-200 font-semibold text-slate-700 shrink-0">
                 Town Chatter
             </div>
             <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-3">

@@ -1,4 +1,7 @@
-
+/**
+ * 城镇模拟器主页面
+ * @author hubin
+ */
 "use client";
 
 import { useGameLoop } from "@/hooks/useGameLoop";
@@ -10,17 +13,23 @@ import { LocationPanel } from "@/components/LocationPanel";
 import { useState, useEffect } from "react";
 import { Agent } from "@/engine/Agent";
 import { Location as TownLocation } from "@/engine/World";
-import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, RotateCcw, Square, Settings } from "lucide-react";
+import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, RotateCcw, Square, Settings, X, Trophy } from "lucide-react";
 import { SettingsModal } from "@/components/SettingsModal";
 import { loadModelSettings, AppModelSettings, SETTINGS_CHANGE_EVENT } from "@/lib/modelSettings";
 
 export default function Home() {
-  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, setJevCooldown, replayAvailable, startReplay, stopReplay } = useGameLoop();
+  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, setJevCooldown, replayAvailable, startReplay, stopReplay, restartSimulation } = useGameLoop();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<TownLocation | null>(null);
   const [historyPair, setHistoryPair] = useState<[Agent, Agent] | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [currentSettings, setCurrentSettings] = useState<AppModelSettings>(loadModelSettings());
+  const [isGameOverDismissed, setIsGameOverDismissed] = useState<boolean>(false);
+
+  const isGameOver = gameState.agents.length > 0 && (
+    gameState.agents.every(a => a.state === 'DEAD') || 
+    gameState.agents.some(a => a.charm >= 100)
+  );
 
   useEffect(() => {
     const initialSettings = loadModelSettings();
@@ -63,10 +72,10 @@ export default function Home() {
   if (!gameState.world) return <div className="flex items-center justify-center h-screen">Loading town...</div>;
 
   return (
-    <main className="min-h-screen bg-slate-50 p-8 font-sans text-slate-900">
+    <main className="h-screen w-screen max-w-full max-h-screen overflow-hidden bg-slate-50 p-3 lg:p-4 font-sans text-slate-900 flex flex-col">
 
       {/* Header / Controls */}
-      <header className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+      <header className="flex flex-wrap lg:flex-nowrap justify-between items-center mb-3 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 shrink-0 gap-3">
         <div>
           <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
             AI Town Simulation
@@ -198,6 +207,18 @@ export default function Home() {
             }
           </div>
 
+          {/* 结算榜单唤醒按钮（当弹窗被用户关闭后显示） */}
+          {isGameOver && isGameOverDismissed && (
+            <button
+              onClick={() => setIsGameOverDismissed(false)}
+              className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-lg shadow-sm font-bold text-xs transition"
+              title="重新打开胜利结算榜单窗口"
+            >
+              <Trophy size={16} className="text-amber-600" />
+              <span>查看结算榜单</span>
+            </button>
+          )}
+
           {/* Model Settings Button */}
           <button
             onClick={() => setIsSettingsOpen(true)}
@@ -216,11 +237,11 @@ export default function Home() {
       </header>
 
       {/* Main Content */}
-      <div className="flex gap-6 items-start justify-center">
+      <div className="flex-1 min-h-0 flex gap-4 items-stretch w-full">
 
         {/* Game Map */}
-        <div className="relative">
-          <div className="bg-white p-2 rounded-lg shadow-lg border border-slate-200 inline-block">
+        <div className="relative flex-1 min-w-0 h-full flex flex-col">
+          <div className="bg-white p-2 rounded-lg shadow-sm border border-slate-200 w-full flex-1 min-h-0 flex flex-col">
             <GameCanvas
               world={gameState.world}
               agents={gameState.agents}
@@ -235,11 +256,11 @@ export default function Home() {
               time={gameState.time}
             />
           </div>
-          <p className="mt-2 text-center text-slate-400 text-sm">Click on an agent or building for details</p>
+          <p className="mt-1 text-center text-slate-400 text-xs shrink-0">Click on an agent or building for details</p>
         </div>
 
         {/* Sidebar / Chat */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col w-80 2xl:w-96 shrink-0 h-full">
           <ChatLog
             logs={gameState.dialogueLog}
             onShowHistory={handleShowHistory}
@@ -288,40 +309,52 @@ export default function Home() {
       />
 
       {/* Game Over Overlay - Charm Winner or Extinction */}
-      {(gameState.agents.length > 0 && (gameState.agents.every(a => a.state === 'DEAD') || gameState.agents.some(a => a.charm >= 100))) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 backdrop-blur-sm animate-in fade-in duration-1000">
-          <div className="bg-slate-900 border-2 border-purple-500/50 p-12 rounded-3xl shadow-[0_0_50px_rgba(124,58,237,0.3)] text-center max-w-md mx-4 transform animate-in zoom-in duration-500">
-            <div className="w-24 h-24 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-purple-500/30">
+      {isGameOver && !isGameOverDismissed && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="relative bg-slate-900 border-2 border-purple-500/50 p-10 pt-12 rounded-3xl shadow-[0_0_50px_rgba(124,58,237,0.3)] text-center max-w-md mx-4 transform animate-in zoom-in duration-300">
+            {/* 关闭按钮 */}
+            <button
+              onClick={() => setIsGameOverDismissed(true)}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white hover:bg-slate-800/80 rounded-xl transition"
+              title="关闭结算窗口，查看小镇"
+            >
+              <X size={20} />
+            </button>
+
+            <div className="w-20 h-20 bg-purple-500/20 rounded-full flex items-center justify-center mx-auto mb-5 border border-purple-500/30">
               {gameState.agents.some(a => a.charm >= 100) ? (
-                <span className="text-4xl">👑</span>
+                <span className="text-3xl">👑</span>
               ) : (
-                <Skull size={48} className="text-purple-500 animate-pulse" />
+                <Skull size={40} className="text-purple-500 animate-pulse" />
               )}
             </div>
-            <h2 className="text-4xl font-black text-white mb-4 tracking-tighter uppercase italic">
+            <h2 className="text-3xl font-black text-white mb-2 tracking-tighter uppercase italic">
               {gameState.agents.some(a => a.charm >= 100) ? 'Charm Champion' : 'Final Ranking'}
             </h2>
-            <p className="text-slate-400 font-medium leading-relaxed mb-6">
+            <p className="text-slate-400 text-xs font-medium leading-relaxed mb-5">
               {gameState.agents.some(a => a.charm >= 100) ? (
-                `A resident has reached maximum charm! Here are the final rankings:`
+                `小镇居民魅力值已达上限！以下是本次模拟最终榜单：`
               ) : (
-                `Every resident of AI Town has passed away. Here are the final charm rankings:`
+                `所有居民均已离开人世。以下是最终小镇排名：`
               )}
             </p>
 
-            <div className="bg-slate-950/50 rounded-2xl border border-slate-800 p-4 max-h-64 overflow-y-auto mb-8 text-left">
-              <h3 className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-4 sticky top-0 bg-slate-900/90 py-1 backdrop-blur-sm border-b border-slate-800">Charm Rankings</h3>
-              <div className="space-y-3">
+            <div className="bg-slate-950/50 rounded-2xl border border-slate-800 p-4 max-h-60 overflow-y-auto mb-6 text-left">
+              <h3 className="text-[10px] font-black text-purple-500 uppercase tracking-widest mb-3 sticky top-0 bg-slate-900/90 py-1 backdrop-blur-sm border-b border-slate-800">Charm Rankings</h3>
+              <div className="space-y-2.5">
                 {gameState.agents
                   .sort((a, b) => b.charm - a.charm)
                   .map((a, index) => (
                   <div
                     key={a.id}
-                    onClick={() => setSelectedAgentId(a.id)}
-                    className="flex justify-between items-center gap-4 text-sm border-b border-slate-800/50 pb-2 last:border-0 last:pb-0 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors group"
+                    onClick={() => {
+                      setSelectedAgentId(a.id);
+                      setIsGameOverDismissed(true);
+                    }}
+                    className="flex justify-between items-center gap-4 text-xs border-b border-slate-800/50 pb-2 last:border-0 last:pb-0 cursor-pointer hover:bg-white/5 p-1 rounded transition-colors group"
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl group-hover:scale-110 transition-transform">
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-lg group-hover:scale-110 transition-transform">
                         {index === 0 ? '👑' : index === 1 ? '🥈' : index === 2 ? '🥉' : a.state === 'DEAD' ? '🪦' : a.emoji}
                       </span>
                       <div>
@@ -333,7 +366,7 @@ export default function Home() {
                     </div>
                     <div className="text-right">
                       <p className={`font-black text-xs ${a.charm >= 100 ? 'text-yellow-400' : 'text-purple-400'}`}>Charm: {a.charm.toFixed(2).replace(/\.00$/, '')}</p>
-                      {a.state === 'DEAD' && <p className="text-rose-400 font-black text-xs">{a.deathCause}</p>}
+                      {a.state === 'DEAD' && <p className="text-rose-400 font-bold text-[10px]">{a.deathCause}</p>}
                       <p className="text-[10px] text-slate-500 font-mono italic">Survived: {(a.livingTicks / 60).toFixed(1)} hrs</p>
                     </div>
                   </div>
@@ -341,12 +374,23 @@ export default function Home() {
               </div>
             </div>
 
-            <div className="pt-2 border-t border-slate-800">
+            <div className="pt-2 border-t border-slate-800 flex flex-col gap-2.5">
               <button
-                onClick={() => window.location.reload()}
-                className="bg-slate-100 hover:bg-white text-slate-950 font-black py-4 px-10 rounded-2xl transition-all hover:scale-105 active:scale-95 shadow-xl w-full"
+                onClick={async () => {
+                  await restartSimulation();
+                  setIsGameOverDismissed(false);
+                  setSelectedAgentId(null);
+                  setSelectedLocation(null);
+                }}
+                className="bg-slate-100 hover:bg-white text-slate-950 font-black py-3 px-8 rounded-xl transition-all hover:scale-105 active:scale-95 shadow-xl w-full text-xs"
               >
-                Restart Simulation
+                重新开始模拟 (Restart Simulation)
+              </button>
+              <button
+                onClick={() => setIsGameOverDismissed(true)}
+                className="bg-slate-800/80 hover:bg-slate-800 text-slate-300 hover:text-white font-bold py-2 px-6 rounded-xl transition text-xs w-full"
+              >
+                关闭窗口，留在当前小镇查看
               </button>
             </div>
           </div>

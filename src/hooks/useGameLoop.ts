@@ -1,4 +1,9 @@
 
+/**
+ * 游戏循环状态管理与控制器 Hook
+ * @author hubin
+ */
+
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { World } from '@/engine/World';
 import { Agent } from '@/engine/Agent';
@@ -340,6 +345,55 @@ export function useGameLoop() {
         setGameState(prev => ({ ...prev, jevCooldown: clamped }));
     };
 
+    const restartSimulation = useCallback(async () => {
+        clearReplay();
+        setReplayAvailable(false);
+
+        if (serverMode) {
+            try {
+                const response = await fetch('/api/simulation', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type: 'reset' })
+                });
+                if (response.ok) {
+                    const freshData = await response.json();
+                    const freshState = hydrateServerState(freshData);
+                    stateRef.current = freshState;
+                    setGameState(freshState);
+                    void pollRef.current?.();
+                    return freshState;
+                }
+            } catch (err) {
+                console.error("Failed to reset server simulation:", err);
+            }
+        }
+
+        const { world, agents } = initializeWorld();
+        const behaviorSystem = new BehaviorSystem(world);
+        const dialogueSystem = new DialogueSystem();
+
+        const resetState: GameState = {
+            world,
+            agents,
+            time: 480,
+            isRunning: false,
+            dialogueLog: [],
+            priceLevel: 1.0,
+            wageLevel: 1.0,
+            riskLevel: 1.0,
+            jevEnabled: stateRef.current.jevEnabled,
+            jevCooldown: stateRef.current.jevCooldown,
+            isReplaying: false
+        };
+
+        stateRef.current = resetState;
+        behaviorSystemRef.current = behaviorSystem;
+        dialogueSystemRef.current = dialogueSystem;
+        setGameState(resetState);
+        return resetState;
+    }, [serverMode, hydrateServerState]);
+
     return {
         gameState,
         togglePause,
@@ -349,11 +403,12 @@ export function useGameLoop() {
         removeAgent,
         setPriceLevel,
         setWageLevel,
-        setRiskLevel
-        ,setJevEnabled
-        ,setJevCooldown,
+        setRiskLevel,
+        setJevEnabled,
+        setJevCooldown,
         replayAvailable,
         startReplay,
-        stopReplay
+        stopReplay,
+        restartSimulation
     };
 }

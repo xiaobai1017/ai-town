@@ -1,3 +1,8 @@
+/**
+ * 权威服务端仿真运行时模块
+ * @author hubin
+ */
+
 import { BehaviorSystem } from '@/ai/BehaviorSystem';
 import { DialogueSystem } from '@/ai/DialogueSystem';
 import { initializeWorld } from '@/data/townScript';
@@ -22,6 +27,13 @@ export class SimulationRuntime {
 
   snapshot(): GameState { return this.state; }
 
+  destroy() {
+    if (this.timer) {
+      clearInterval(this.timer);
+      this.timer = undefined;
+    }
+  }
+
   command(command: { type: string; value?: number | boolean }) {
     if (command.type === 'toggle') this.state.isRunning = !this.state.isRunning;
     if (command.type === 'pause') this.state.isRunning = false;
@@ -40,6 +52,25 @@ export class SimulationRuntime {
     if (command.type === 'risk' && typeof command.value === 'number') this.state.riskLevel = command.value;
     if (command.type === 'addAgent') this.addAgent();
     if (command.type === 'removeAgent') this.removeAgent();
+    if (command.type === 'reset') {
+      const { world, agents } = initializeWorld();
+      this.behavior = new BehaviorSystem(world);
+      this.dialogue = new DialogueSystem();
+      this.state = {
+        world,
+        agents,
+        time: 480,
+        isRunning: false,
+        dialogueLog: [],
+        priceLevel: 1,
+        wageLevel: 1,
+        riskLevel: 1,
+        jevEnabled: this.state.jevEnabled,
+        jevCooldown: this.state.jevCooldown,
+        isReplaying: false
+      };
+      return this.state;
+    }
     return this.state;
   }
 
