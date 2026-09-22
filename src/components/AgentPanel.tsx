@@ -6,7 +6,7 @@
 import React from 'react';
 import { Agent } from '@/engine/Agent';
 import { X, Landmark, History, ChevronRight, ChevronDown, PlusCircle, MinusCircle, Sparkles } from 'lucide-react';
-import { useI18n } from '@/lib/i18n';
+import { useI18n, formatGameTime as formatGameTimeUtil } from '@/lib/i18n';
 
 interface AgentPanelProps {
     agent: Agent | null;
@@ -16,18 +16,13 @@ interface AgentPanelProps {
 }
 
 export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPanelProps) {
-    const { t, isZh } = useI18n();
+    const { t, language, isZh } = useI18n();
     const [showFinHistory, setShowFinHistory] = React.useState(false);
     const [showCharmHistory, setShowCharmHistory] = React.useState(false);
     if (!agent) return null;
 
     // Format game minutes as "Day N HH:MM"
-    const formatGameTime = (minutes: number): string => {
-        const day = Math.floor(minutes / (24 * 60)) + 1;
-        const hour = Math.floor((minutes % (24 * 60)) / 60);
-        const min = minutes % 60;
-        return t('common.day', { day }) + ` ${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
-    };
+    const formatGameTime = (minutes: number): string => formatGameTimeUtil(minutes, language);
 
     const relationshipEntries = Object.entries(agent.relationships)
         .sort(([, a], [, b]) => b - a)

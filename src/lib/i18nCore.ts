@@ -89,3 +89,16 @@ export function t(path: string, params?: Record<string, string | number>, lang?:
 
   return current;
 }
+
+/**
+ * 格式化游戏内时间（分钟转换为 "第 N 天 HH:MM" / "Day N HH:MM"）
+ * @param minutes 游戏内分钟数
+ * @param lang 语言（可选，默认当前语言）
+ */
+export function formatGameTime(minutes: number, lang?: Language): string {
+  const safeMinutes = Math.max(0, Math.floor(minutes || 0));
+  const day = Math.floor(safeMinutes / (24 * 60)) + 1;
+  const hour = Math.floor((safeMinutes % (24 * 60)) / 60);
+  const min = safeMinutes % 60;
+  return `${t('common.day', { day }, lang)} ${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}

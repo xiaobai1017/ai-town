@@ -6,7 +6,7 @@
 import { Agent } from '../engine/Agent';
 import { generateResponse } from '@/lib/llm';
 import { LLM_MODEL } from '@/lib/config';
-import { getLanguage, t } from '@/lib/i18nCore';
+import { getLanguage, t, formatGameTime } from '@/lib/i18nCore';
 import { loadModelSettings } from '@/lib/modelSettings';
 
 export interface DialoguePacket {
@@ -14,6 +14,7 @@ export interface DialoguePacket {
     listener: string;
     text: string;
     timestamp: string;
+    gameTime?: number;
 }
 
 export class DialogueSystem {
@@ -337,18 +338,21 @@ Also, strictly start with a tag: [POS], [NEU], or [NEG] based on your reaction.`
             updateHistory(b, a.id, `${a.name}: ${textA_Final}`);
             updateHistory(b, a.id, `${b.name}: ${textB_Final}`);
 
+            const formattedGameTime = formatGameTime(gameTime, lang);
             this.dialogueLog.push({
                 speaker: a.name,
                 listener: b.name,
                 text: textA_Final,
-                timestamp: new Date().toLocaleTimeString()
+                timestamp: formattedGameTime,
+                gameTime: gameTime
             });
 
             this.dialogueLog.push({
                 speaker: b.name,
                 listener: a.name,
                 text: textB_Final,
-                timestamp: new Date().toLocaleTimeString()
+                timestamp: formattedGameTime,
+                gameTime: gameTime
             });
 
             a.conversation = textA_Final;

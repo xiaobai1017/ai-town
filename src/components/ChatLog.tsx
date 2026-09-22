@@ -5,7 +5,7 @@
 
 import React, { useEffect, useRef } from 'react';
 import { DialoguePacket } from '@/ai/DialogueSystem';
-import { useI18n } from '@/lib/i18n';
+import { useI18n, formatGameTime } from '@/lib/i18n';
 
 interface ChatLogProps {
     logs: DialoguePacket[];
@@ -13,7 +13,7 @@ interface ChatLogProps {
 }
 
 export function ChatLog({ logs, onShowHistory }: ChatLogProps) {
-    const { t } = useI18n();
+    const { t, language } = useI18n();
     const scrollRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -40,7 +40,11 @@ export function ChatLog({ logs, onShowHistory }: ChatLogProps) {
                                 >
                                     {log.speaker} {t('chat.to')} {log.listener}
                                 </button>
-                                <span>{log.timestamp}</span>
+                                <span>
+                                    {typeof log.gameTime === 'number'
+                                        ? formatGameTime(log.gameTime, language)
+                                        : log.timestamp}
+                                </span>
                             </div>
                             <p className="text-slate-800">"{log.text}"</p>
                         </div>

@@ -30,6 +30,16 @@ const DESCRIPTIONS: Record<string, string> = {
   WAIT: 'Wait briefly when no useful safe action is available.'
 };
 
+function isTimeoutError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { name?: unknown; code?: unknown; message?: unknown };
+  const name = typeof candidate.name === 'string' ? candidate.name.toLowerCase() : '';
+  const code = typeof candidate.code === 'string' ? candidate.code.toLowerCase() : '';
+  const message = typeof candidate.message === 'string' ? candidate.message.toLowerCase() : '';
+  return name.includes('timeout') || name.includes('abort') || code === 'timeout_err' ||
+    code.includes('timeout') || message.includes('timed out') || message.includes('timeout');
+}
+
 /** Returns null if JEV is not configured or the request fails. */
 export async function callJev(context: JevDecisionContext, overrideConfig?: Partial<JevConfig>): Promise<JevAction | null> {
   const apiKey = overrideConfig?.apiKey?.trim() || envApiKey;
@@ -74,7 +84,15 @@ export async function callJev(context: JevDecisionContext, overrideConfig?: Part
       reason: `Jev selected ${type} (confidence ${(result.answers.action.confidence * 100).toFixed(0)}%).`
     };
   } catch (error) {
-    console.error('JEV decision failed:', error);
+    // A timeout is an expected transient failure. The caller already has a
+    // deterministic local-rule fallback, so do not emit a noisy stack trace.
+    if (isTimeoutError(error)) {
+      if (typeof window === 'undefined') {
+        console.warn(`[JEV] decision timed out for agent ${context.agent?.name}; using local fallback.`);
+      }
+    } else {
+      console.error('[JEV] decision failed:', error);
+    }
     return null;
   }
 }
