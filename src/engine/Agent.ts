@@ -30,6 +30,15 @@ export interface JevIntent {
     status: 'thinking' | 'planned' | 'fallback';
 }
 
+export interface DecisionLogEntry {
+    type: string;
+    source: 'JEV' | 'LOCAL_RULE' | 'SYSTEM';
+    location?: string;
+    reason?: string;
+    time: number;
+    status: 'thinking' | 'planned' | 'fallback';
+}
+
 export interface CharmEvent {
     source: 'shopping' | 'library';
     description: string;
@@ -79,8 +88,30 @@ export class Agent {
     charmHistory: CharmEvent[] = [];
     /** Latest JEV plan, shown in the resident inspector. */
     jevIntent?: JevIntent;
+    /** Decision log history, newest first (capped). */
+    decisionHistory: DecisionLogEntry[] = [];
     lastShoppingAmount: number = 0; // Track last shopping amount for charm calculation
     arrestTime?: number; // Time when agent was arrested
+
+    /**
+     * 记录小人决策日志并更新当前意图
+     */
+    recordDecision(intent: JevIntent, source: 'JEV' | 'LOCAL_RULE' | 'SYSTEM' = intent.type === 'LOCAL_RULE' ? 'LOCAL_RULE' : 'JEV') {
+        this.jevIntent = intent;
+        if (intent.status !== 'thinking') {
+            this.decisionHistory.unshift({
+                type: intent.type,
+                source,
+                location: intent.location,
+                reason: intent.reason,
+                time: intent.time,
+                status: intent.status
+            });
+            if (this.decisionHistory.length > 50) {
+                this.decisionHistory.pop();
+            }
+        }
+    }
 
     constructor(id: string, name: string, role: string, startPos: Coordinate, color: string, emoji: string, description: string = "A resident of AI Town.") {
         this.id = id;

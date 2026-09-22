@@ -19,6 +19,7 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
     const { t, language, isZh } = useI18n();
     const [showFinHistory, setShowFinHistory] = React.useState(false);
     const [showCharmHistory, setShowCharmHistory] = React.useState(false);
+    const [showDecisionHistory, setShowDecisionHistory] = React.useState(false);
     if (!agent) return null;
 
     // Format game minutes as "Day N HH:MM"
@@ -74,9 +75,23 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
 
                 <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
                     <div className="flex items-center justify-between">
-                        <span className="font-semibold text-indigo-700 text-sm">{t('agent.jevDecision')}</span>
-                        {agent.jevIntent?.status === 'thinking' && <span className="text-[10px] font-bold text-indigo-500 animate-pulse">{t('agent.thinking')}</span>}
+                        <div className="flex items-center gap-2">
+                            <span className="font-semibold text-indigo-700 text-sm">{t('agent.jevDecision')}</span>
+                            {agent.jevIntent?.status === 'thinking' && (
+                                <span className="text-[10px] font-bold text-indigo-500 animate-pulse">{t('agent.thinking')}</span>
+                            )}
+                        </div>
+                        <button
+                            onClick={() => setShowDecisionHistory(!showDecisionHistory)}
+                            className="text-xs flex items-center gap-1 text-indigo-600 font-bold hover:underline cursor-pointer"
+                        >
+                            <History size={14} />
+                            {showDecisionHistory 
+                                ? t('agent.hideDecisionHistory') 
+                                : `${t('agent.viewDecisionHistory')} (${agent.decisionHistory?.length || 0})`}
+                        </button>
                     </div>
+
                     {agent.jevIntent ? (
                         <>
                             <p className="mt-1 text-sm font-bold text-slate-800">
@@ -86,6 +101,55 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                         </>
                     ) : (
                         <p className="mt-1 text-xs text-slate-500">{t('agent.waitingJev')}</p>
+                    )}
+
+                    {showDecisionHistory && (
+                        <div className="bg-slate-900 text-slate-300 p-3 rounded-xl space-y-2 mt-3 max-h-60 overflow-y-auto border border-slate-700 font-mono text-[11px] animate-in slide-in-from-top duration-200">
+                            <div className="flex justify-between items-center border-b border-slate-800 pb-1 mb-2">
+                                <h3 className="text-[10px] uppercase font-black text-indigo-400 tracking-widest">
+                                    {t('agent.decisionHistory')}
+                                </h3>
+                                <span className="text-[10px] text-slate-500">
+                                    {agent.decisionHistory?.length || 0}
+                                </span>
+                            </div>
+
+                            {(!agent.decisionHistory || agent.decisionHistory.length === 0) ? (
+                                <p className="text-slate-500 italic py-2 text-center text-xs">{t('agent.noDecisionHistory')}</p>
+                            ) : (
+                                agent.decisionHistory.map((d, i) => {
+                                    const actionKey = `agent.action${d.type.charAt(0) + d.type.slice(1).toLowerCase()}`;
+                                    const actionLabel = t(actionKey) || d.type;
+                                    const sourceLabel = d.source === 'JEV' ? t('agent.sourceJev') : t('agent.sourceLocal');
+                                    return (
+                                        <div key={i} className="border-b border-slate-800/60 pb-2 last:border-0 text-left space-y-1">
+                                            <div className="flex items-center justify-between gap-1">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                                        d.source === 'JEV' 
+                                                            ? 'bg-purple-900/80 text-purple-300 border border-purple-600' 
+                                                            : 'bg-blue-900/80 text-blue-300 border border-blue-600'
+                                                    }`}>
+                                                        {sourceLabel}
+                                                    </span>
+                                                    <span className="text-slate-100 font-bold">
+                                                        {actionLabel}{d.location ? ` → ${t('building.' + d.location) || d.location}` : ''}
+                                                    </span>
+                                                </div>
+                                                <span className="text-[10px] text-slate-400 shrink-0">
+                                                    {formatGameTime(d.time)}
+                                                </span>
+                                            </div>
+                                            {d.reason && (
+                                                <p className="text-slate-400 text-[10px] leading-relaxed break-words pl-1.5 border-l-2 border-indigo-500/40">
+                                                    {d.reason}
+                                                </p>
+                                            )}
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
                     )}
                 </div>
 

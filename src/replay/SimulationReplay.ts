@@ -33,6 +33,9 @@ export function makeReplayFrame(state: Omit<ReplayFrame, 'world' | 'agents'> & {
     agent.conversationHistory = Object.fromEntries(
       Object.entries(agent.conversationHistory).map(([id, messages]) => [id, messages.slice(-3)])
     );
+    if (agent.decisionHistory) {
+      agent.decisionHistory = agent.decisionHistory.slice(0, 20);
+    }
   });
   frame.world.locations.forEach(location => {
     location.stats.transactions = location.stats.transactions.slice(0, 30);

@@ -345,7 +345,7 @@ export function useGameLoop() {
         setGameState(prev => ({ ...prev, jevCooldown: clamped }));
     };
 
-    const restartSimulation = useCallback(async () => {
+    const restartSimulation = useCallback(async (autoStart: boolean = true) => {
         clearReplay();
         setReplayAvailable(false);
 
@@ -354,7 +354,7 @@ export function useGameLoop() {
                 const response = await fetch('/api/simulation', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ type: 'reset' })
+                    body: JSON.stringify({ type: 'reset', autoStart })
                 });
                 if (response.ok) {
                     const freshData = await response.json();
@@ -377,7 +377,7 @@ export function useGameLoop() {
             world,
             agents,
             time: 480,
-            isRunning: false,
+            isRunning: autoStart,
             dialogueLog: [],
             priceLevel: 1.0,
             wageLevel: 1.0,
@@ -386,6 +386,11 @@ export function useGameLoop() {
             jevCooldown: stateRef.current.jevCooldown,
             isReplaying: false
         };
+
+        if (autoStart) {
+            const initialFrame = makeReplayFrame({ ...resetState, world, agents });
+            recordingRef.current = { version: 1, createdAt: new Date().toISOString(), frames: [initialFrame] };
+        }
 
         stateRef.current = resetState;
         behaviorSystemRef.current = behaviorSystem;

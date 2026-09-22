@@ -13,7 +13,7 @@ import { LocationPanel } from "@/components/LocationPanel";
 import { useState, useEffect } from "react";
 import { Agent } from "@/engine/Agent";
 import { Location as TownLocation } from "@/engine/World";
-import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, RotateCcw, Square, Settings, X, Trophy, Languages } from "lucide-react";
+import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, RotateCcw, RotateCw, Square, Settings, X, Trophy, Languages } from "lucide-react";
 import { SettingsModal } from "@/components/SettingsModal";
 import { loadModelSettings, AppModelSettings, SETTINGS_CHANGE_EVENT } from "@/lib/modelSettings";
 import { useI18n } from "@/lib/i18n";
@@ -63,6 +63,18 @@ export default function Home() {
     if (a && b) setHistoryPair([a, b]);
   };
 
+  const handleRestart = async () => {
+    if (window.confirm(t('header.restartConfirm'))) {
+      if (gameState.isReplaying) {
+        stopReplay();
+      }
+      await restartSimulation();
+      setIsGameOverDismissed(false);
+      setSelectedAgentId(null);
+      setSelectedLocation(null);
+    }
+  };
+
   const formatTime = (minutes: number) => {
     const h = Math.floor(minutes / 60) % 24;
     const m = minutes % 60;
@@ -77,119 +89,126 @@ export default function Home() {
     <main className="h-screen w-screen max-w-full max-h-screen overflow-hidden bg-slate-50 p-3 lg:p-4 font-sans text-slate-900 flex flex-col">
 
       {/* Header / Controls */}
-      <header className="flex flex-wrap lg:flex-nowrap justify-between items-center mb-3 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-200 shrink-0 gap-3">
-        <div>
-          <h1 className="text-2xl font-bold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent">
-            {t('header.title')}
-          </h1>
-          <p className="text-slate-500 text-sm">
-            {t('common.day', { day: Math.floor(gameState.time / (24 * 60)) + 1 })}, {formatTime(gameState.time)}
-          </p>
-        </div>
+      <header className="flex flex-wrap xl:flex-nowrap justify-between items-center mb-3 bg-white px-4 py-2 rounded-xl shadow-xs border border-slate-200 shrink-0 gap-3">
+        {/* 左侧：标题、小镇时间与模拟运行控制器 */}
+        <div className="flex items-center gap-3 shrink-0">
+          <div>
+            <h1 className="text-xl font-black bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent leading-tight">
+              {t('header.title')}
+            </h1>
+            <p className="text-slate-400 text-xs font-medium">
+              {t('common.day', { day: Math.floor(gameState.time / (24 * 60)) + 1 })}, {formatTime(gameState.time)}
+            </p>
+          </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg">
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
             <button
               onClick={gameState.isReplaying ? stopReplay : togglePause}
-              className={`p-2 rounded hover:shadow-sm transition ${gameState.isRunning ? 'bg-white text-indigo-600' : 'bg-indigo-600 text-white'}`}
+              className={`p-1.5 rounded-md hover:shadow-xs transition ${gameState.isRunning ? 'bg-white text-indigo-600' : 'bg-indigo-600 text-white'}`}
+              title={gameState.isRunning ? 'Pause' : 'Play'}
             >
-              {gameState.isRunning ? <Pause size={20} /> : <Play size={20} />}
+              {gameState.isRunning ? <Pause size={18} /> : <Play size={18} />}
             </button>
             {gameState.isReplaying ? (
-              <button onClick={stopReplay} title="Stop replay" className="p-2 rounded hover:shadow-sm text-rose-600">
-                <Square size={18} />
+              <button onClick={stopReplay} title="Stop replay" className="p-1.5 rounded-md hover:shadow-xs text-rose-600">
+                <Square size={16} />
               </button>
             ) : (
-              <button onClick={startReplay} disabled={!replayAvailable} title="Replay latest simulation" className="p-2 rounded hover:shadow-sm disabled:opacity-30 text-purple-600">
-                <RotateCcw size={18} />
+              <button onClick={startReplay} disabled={!replayAvailable} title="Replay latest simulation" className="p-1.5 rounded-md hover:shadow-xs disabled:opacity-30 text-purple-600">
+                <RotateCcw size={16} />
               </button>
             )}
+            <button
+              onClick={handleRestart}
+              title={t('header.restartTip')}
+              className="p-1.5 rounded-md hover:shadow-xs text-slate-500 hover:text-indigo-600 hover:bg-white transition"
+            >
+              <RotateCw size={16} />
+            </button>
           </div>
+        </div>
 
-          <div className="flex items-center gap-2 text-sm text-slate-600 bg-slate-100 p-1 rounded-lg">
-            <span className="px-2 font-medium">{t('header.speed')}: {speed}x</span>
-            <button onClick={() => setSpeed(1)} className={`p-1 px-3 rounded ${speed === 1 ? 'bg-white shadow-sm' : ''}`}>1x</button>
-            <button onClick={() => setSpeed(5)} className={`p-1 px-3 rounded ${speed === 5 ? 'bg-white shadow-sm' : ''}`}>5x</button>
-            <button onClick={() => setSpeed(20)} className={`p-1 px-3 rounded ${speed === 20 ? 'bg-white shadow-sm' : ''}`}>20x</button>
-          </div>
-
-          <div className="ml-4 flex items-center gap-3 bg-slate-100 p-1 rounded-lg">
-            <div className="flex items-center gap-1 px-2 border-r border-slate-200">
-              <User size={16} className="text-slate-500" />
-              <span className="text-sm font-medium text-slate-600">{gameState.agents.length} {t('header.residents')}</span>
+        {/* 右侧控制与数据区 */}
+        <div className="flex items-center gap-2.5 flex-wrap xl:flex-nowrap">
+          {/* 居民人数控制 */}
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+            <div className="flex items-center gap-1 px-2 border-r border-slate-200 text-xs font-medium text-slate-600">
+              <User size={15} className="text-slate-500" />
+              <span>{gameState.agents.length} {t('header.residents')}</span>
             </div>
-            <div className="flex gap-1">
+            <div className="flex gap-0.5">
               <button
                 onClick={removeAgent}
                 title={t('header.removeResident')}
-                className="p-1 px-2 hover:bg-white hover:shadow-sm rounded transition text-slate-500 hover:text-red-500"
+                className="p-1 hover:bg-white hover:shadow-xs rounded transition text-slate-500 hover:text-red-500"
               >
-                <Minus size={16} />
+                <Minus size={14} />
               </button>
               <button
                 onClick={addAgent}
                 title={t('header.addResident')}
-                className="p-1 px-2 hover:bg-white hover:shadow-sm rounded transition text-slate-500 hover:text-indigo-600"
+                className="p-1 hover:bg-white hover:shadow-xs rounded transition text-slate-500 hover:text-indigo-600"
               >
-                <Plus size={16} />
+                <Plus size={14} />
               </button>
             </div>
           </div>
 
-          <div className="ml-4 flex items-center gap-4 bg-slate-100 p-1 rounded-lg">
-            <label className="flex items-center gap-2 px-2 border-r border-slate-200 text-xs font-bold text-indigo-700" title={t('header.jevAiTip')}>
-              <input type="checkbox" checked={gameState.jevEnabled} onChange={(event) => setJevEnabled(event.target.checked)} />
+          {/* JEV 智能与经济参数调节 */}
+          <div className="flex items-center gap-2.5 bg-slate-100 p-1 rounded-lg">
+            <label className="flex items-center gap-1.5 px-2 border-r border-slate-200 text-xs font-bold text-indigo-700 cursor-pointer" title={t('header.jevAiTip')}>
+              <input type="checkbox" checked={gameState.jevEnabled} onChange={(event) => setJevEnabled(event.target.checked)} className="cursor-pointer rounded text-indigo-600" />
               {t('header.jevAi')}
             </label>
-            <div className="flex items-center gap-1 px-2 border-r border-slate-200" title={t('header.jevIntervalTip')}>
+            <div className="flex items-center gap-1 px-1.5 border-r border-slate-200" title={t('header.jevIntervalTip')}>
               <div className="flex flex-col leading-tight">
-                <span className="text-[10px] text-slate-500 uppercase font-bold">{t('header.jevInterval')}</span>
+                <span className="text-[9px] text-slate-500 uppercase font-bold">{t('header.jevInterval')}</span>
                 <span className="text-xs font-black text-indigo-700">{gameState.jevCooldown}m</span>
               </div>
-              <div className="flex flex-col ml-1">
-                <button onClick={() => setJevCooldown(gameState.jevCooldown + 5)} className="hover:text-indigo-600 p-0.5"><Plus size={10} /></button>
-                <button onClick={() => setJevCooldown(Math.max(1, gameState.jevCooldown - 5))} className="hover:text-rose-600 p-0.5"><Minus size={10} /></button>
+              <div className="flex flex-col ml-0.5">
+                <button onClick={() => setJevCooldown(gameState.jevCooldown + 5)} className="hover:text-indigo-600 p-0.5"><Plus size={9} /></button>
+                <button onClick={() => setJevCooldown(Math.max(1, gameState.jevCooldown - 5))} className="hover:text-rose-600 p-0.5"><Minus size={9} /></button>
               </div>
             </div>
-            <div className="flex items-center gap-2 px-2 border-r border-slate-200">
-              <Banknote size={16} className="text-emerald-600" />
+            <div className="flex items-center gap-1.5 px-1.5 border-r border-slate-200">
+              <Banknote size={15} className="text-emerald-600" />
               <div className="flex flex-col leading-tight">
-                <span className="text-[10px] text-slate-500 uppercase font-bold">{t('header.wages')}</span>
+                <span className="text-[9px] text-slate-500 uppercase font-bold">{t('header.wages')}</span>
                 <span className="text-xs font-black text-slate-700">{gameState.wageLevel.toFixed(1)}x</span>
               </div>
-              <div className="flex flex-col ml-1">
-                <button onClick={() => setWageLevel(Math.min(5, gameState.wageLevel + 0.1))} className="hover:text-emerald-600 p-0.5"><Plus size={10} /></button>
-                <button onClick={() => setWageLevel(Math.max(0.1, gameState.wageLevel - 0.1))} className="hover:text-rose-600 p-0.5"><Minus size={10} /></button>
+              <div className="flex flex-col ml-0.5">
+                <button onClick={() => setWageLevel(Math.min(5, gameState.wageLevel + 0.1))} className="hover:text-emerald-600 p-0.5"><Plus size={9} /></button>
+                <button onClick={() => setWageLevel(Math.max(0.1, gameState.wageLevel - 0.1))} className="hover:text-rose-600 p-0.5"><Minus size={9} /></button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 px-2 border-r border-slate-200">
-              <Coins size={16} className="text-amber-600" />
+            <div className="flex items-center gap-1.5 px-1.5 border-r border-slate-200">
+              <Coins size={15} className="text-amber-600" />
               <div className="flex flex-col leading-tight">
-                <span className="text-[10px] text-slate-500 uppercase font-bold">{t('header.prices')}</span>
+                <span className="text-[9px] text-slate-500 uppercase font-bold">{t('header.prices')}</span>
                 <span className="text-xs font-black text-slate-700">{gameState.priceLevel.toFixed(1)}x</span>
               </div>
-              <div className="flex flex-col ml-1">
-                <button onClick={() => setPriceLevel(Math.min(5, gameState.priceLevel + 0.1))} className="hover:text-amber-600 p-0.5"><Plus size={10} /></button>
-                <button onClick={() => setPriceLevel(Math.max(0.1, gameState.priceLevel - 0.1))} className="hover:text-rose-600 p-0.5"><Minus size={10} /></button>
+              <div className="flex flex-col ml-0.5">
+                <button onClick={() => setPriceLevel(Math.min(5, gameState.priceLevel + 0.1))} className="hover:text-amber-600 p-0.5"><Plus size={9} /></button>
+                <button onClick={() => setPriceLevel(Math.max(0.1, gameState.priceLevel - 0.1))} className="hover:text-rose-600 p-0.5"><Minus size={9} /></button>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 px-2">
-              <ShieldAlert size={16} className="text-indigo-600" />
+            <div className="flex items-center gap-1.5 px-1.5">
+              <ShieldAlert size={15} className="text-indigo-600" />
               <div className="flex flex-col leading-tight">
-                <span className="text-[10px] text-slate-500 uppercase font-bold">{t('header.accidentRisk')}</span>
+                <span className="text-[9px] text-slate-500 uppercase font-bold">{t('header.accidentRisk')}</span>
                 <span className="text-xs font-black text-slate-700">{gameState.riskLevel.toFixed(1)}x</span>
               </div>
-              <div className="flex flex-col ml-1">
-                <button onClick={() => setRiskLevel(Math.min(10, gameState.riskLevel + 0.5))} className="hover:text-indigo-600 p-0.5"><Plus size={10} /></button>
-                <button onClick={() => setRiskLevel(Math.max(0, gameState.riskLevel - 0.5))} className="hover:text-rose-600 p-0.5"><Minus size={10} /></button>
+              <div className="flex flex-col ml-0.5">
+                <button onClick={() => setRiskLevel(Math.min(10, gameState.riskLevel + 0.5))} className="hover:text-indigo-600 p-0.5"><Plus size={9} /></button>
+                <button onClick={() => setRiskLevel(Math.max(0, gameState.riskLevel - 0.5))} className="hover:text-rose-600 p-0.5"><Minus size={9} /></button>
               </div>
             </div>
           </div>
 
-          {/* Charm Rankings */}
-          <div className="flex items-center gap-2 text-sm text-slate-600 bg-purple-50 p-2 rounded-lg">
+          {/* 魅力榜 TOP3 */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-purple-50 px-2.5 py-1.5 rounded-lg border border-purple-100 shrink-0">
             <span className="text-purple-700 font-bold">{t('header.charmRankings')}:</span>
             {gameState.agents
               .sort((a, b) => b.charm - a.charm)
@@ -198,12 +217,12 @@ export default function Home() {
                 <span 
                   key={agent.id} 
                   onClick={() => setSelectedAgentId(agent.id)}
-                  className="flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm cursor-pointer hover:shadow-md transition-all"
+                  className="flex items-center gap-1 bg-white px-2 py-0.5 rounded shadow-xs cursor-pointer hover:shadow-sm hover:text-purple-700 transition-all font-medium"
                 >
-                  <span className="text-xs font-black text-purple-600">#{index + 1}</span>
+                  <span className="text-[10px] font-black text-purple-600">#{index + 1}</span>
                   <span>{agent.state === 'DEAD' ? '🪦' : agent.emoji}</span>
-                  <span className="font-medium">{agent.name}</span>
-                  <span className="text-xs text-purple-600">{agent.charm.toFixed(2).replace(/\.00$/, '')}</span>
+                  <span>{agent.name}</span>
+                  <span className="font-bold text-purple-600 font-mono">{agent.charm.toFixed(1).replace(/\.0$/, '')}</span>
                 </span>
               ))
             }
@@ -213,37 +232,31 @@ export default function Home() {
           {isGameOver && isGameOverDismissed && (
             <button
               onClick={() => setIsGameOverDismissed(false)}
-              className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-3 py-1.5 rounded-lg shadow-sm font-bold text-xs transition"
+              className="flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 px-2.5 py-1.5 rounded-lg shadow-xs font-bold text-xs transition shrink-0"
               title="重新打开胜利结算榜单窗口"
             >
-              <Trophy size={16} className="text-amber-600" />
+              <Trophy size={15} className="text-amber-600" />
               <span>{t('header.winnerBadge')}</span>
             </button>
           )}
 
-          {/* Language Switch Button */}
+          {/* 语言切换按钮 */}
           <button
             onClick={() => setLanguage(language === 'zh' ? 'en' : 'zh')}
-            className="flex items-center gap-1.5 bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 px-3 py-1.5 rounded-lg shadow-sm transition text-slate-700 hover:text-indigo-600 font-bold text-xs"
+            className="flex items-center gap-1 bg-white hover:bg-slate-100 border border-slate-200 hover:border-indigo-300 px-2.5 py-1.5 rounded-lg shadow-xs transition text-slate-700 hover:text-indigo-600 font-bold text-xs shrink-0 cursor-pointer"
             title={language === 'zh' ? '切换为英文 (Switch to English)' : 'Switch to Chinese (切换为中文)'}
           >
-            <Languages size={16} className="text-indigo-600" />
+            <Languages size={15} className="text-indigo-600" />
             <span>{language === 'zh' ? 'EN' : '中文'}</span>
           </button>
 
-          {/* Model Settings Button */}
+          {/* 模型设置按钮（仅图标） */}
           <button
             onClick={() => setIsSettingsOpen(true)}
-            className="flex items-center gap-2 bg-white hover:bg-indigo-50/50 border border-slate-200 hover:border-indigo-300 px-3 py-1.5 rounded-lg shadow-sm transition text-slate-700 hover:text-indigo-600 group"
-            title={t('settings.title')}
+            className="p-2 bg-white hover:bg-slate-100 border border-slate-200 hover:border-indigo-300 rounded-lg shadow-xs transition text-slate-600 hover:text-indigo-600 group shrink-0 flex items-center justify-center cursor-pointer"
+            title={`${t('settings.title')} (${currentSettings.llm.enabled ? (currentSettings.llm.model || 'Default') : t('common.disabled')})`}
           >
-            <Settings size={18} className="text-indigo-600 group-hover:rotate-45 transition-transform duration-200" />
-            <div className="flex flex-col text-left">
-              <span className="text-[9px] text-slate-400 font-bold uppercase leading-none">{t('header.modelConfig')}</span>
-              <span className={`text-xs font-bold leading-tight max-w-[100px] truncate ${currentSettings.llm.enabled ? 'text-slate-700 group-hover:text-indigo-600' : 'text-slate-400 italic'}`}>
-                {currentSettings.llm.enabled ? (currentSettings.llm.model || 'Default') : t('common.disabled')}
-              </span>
-            </div>
+            <Settings size={17} className="text-indigo-600 group-hover:rotate-45 transition-transform duration-200" />
           </button>
         </div>
       </header>

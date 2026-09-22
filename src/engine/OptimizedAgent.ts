@@ -1,5 +1,10 @@
+/**
+ * 优化版居民智能体类
+ * @author hubin
+ */
+
 import { Coordinate, World } from './World';
-import type { CharmEvent } from './Agent';
+import type { CharmEvent, JevIntent, DecisionLogEntry } from './Agent';
 
 export type AgentState = 'IDLE' | 'MOVING' | 'WORKING' | 'READING' | 'TALKING' | 'SLEEPING' | 'CRIMINAL' | 'ARRESTED' | 'EATING' | 'BANKING' | 'TREATING' | 'SHOPPING' | 'DEAD';
 
@@ -56,8 +61,27 @@ export class OptimizedAgent {
     livingTicks: number = 0;
     charm: number = 0; // 0-100, charm level from shopping and social status
     charmHistory: CharmEvent[] = []; // Structurally required for Agent compatibility
+    decisionHistory: DecisionLogEntry[] = [];
+    jevIntent?: JevIntent;
     lastShoppingAmount: number = 0; // Track last shopping amount for charm calculation
     arrestTime?: number; // Time when agent was arrested
+
+    recordDecision(intent: JevIntent, source: 'JEV' | 'LOCAL_RULE' | 'SYSTEM' = intent.type === 'LOCAL_RULE' ? 'LOCAL_RULE' : 'JEV') {
+        this.jevIntent = intent;
+        if (intent.status !== 'thinking') {
+            this.decisionHistory.unshift({
+                type: intent.type,
+                source,
+                location: intent.location,
+                reason: intent.reason,
+                time: intent.time,
+                status: intent.status
+            });
+            if (this.decisionHistory.length > 50) {
+                this.decisionHistory.pop();
+            }
+        }
+    }
 
     // 优化：缓存常用值
     private _totalWealth: number = 0;

@@ -81,43 +81,56 @@ export function buildJevContext(agent: Agent, world: World, time: number, priceM
     distance: Math.abs(agent.position.x - location.entry.x) + Math.abs(agent.position.y - location.entry.y)
   }));
 
-  const healthFloor = 80;
-  const hungerCeiling = 35;
+  const healthFloor = 50;
+  const hungerCeiling = 65;
   const hour = Math.floor(time / 60) % 24;
   const finances = planFinances(agent, priceMultiplier, hour);
-  const canPursueCharmSafely = agent.health >= healthFloor && agent.hunger <= hungerCeiling &&
+  const canPursueCharmSafely = agent.health >= 55 && agent.hunger <= 55 &&
     finances.canShop && agent.charm < 100;
-  const canReadSafely = agent.health >= healthFloor && agent.hunger <= hungerCeiling && agent.charm < 100;
+  const canReadSafely = agent.health >= 55 && agent.hunger <= 55 && agent.charm < 100;
 
-  // 智能剪枝候选动作：从无脑 9 个精简为 3~5 个当前相关的动作，大幅减少模型推理负担与超时率
+  // 动态丰富候选动作：兼顾多样性与适度选项数量（保持 3~6 个贴合情境的候选）
   const candidates: JevAction[] = [
-    { type: 'WORK', location: workLocation(agent) },
-    { type: 'WANDER' },
+    { type: 'WANDER', location: 'Park' },
   ];
 
+  // 白天工作时段提供工作选项
+  if (hour >= 7 && hour < 20) {
+    candidates.push({ type: 'WORK', location: workLocation(agent) });
+  }
+
+  // 饥饿感出现时提供就餐选项（优先考虑资金与偏好）
+  if (agent.hunger >= 20) {
+    const prefersBakery = agent.cash < (0.05 * priceMultiplier) || agent.bankBalance < 10;
+    candidates.push({ type: 'EAT', location: prefersBakery ? 'Bakery' : 'Restaurant' });
+  }
+
+  // 资金充裕且基本需求满足时提供商场消费
   if (canPursueCharmSafely) {
     candidates.push({ type: 'SHOP', location: 'Mall' });
   }
+
+  // 状态安全时提供图书馆静心阅读
   if (canReadSafely) {
     candidates.push({ type: 'LIBRARY', location: 'Library' });
   }
-  // 仅在健康明显亏损时考虑就医
-  if (agent.health < 80) {
+
+  // 健康受损时提供就医选项
+  if (agent.health < 85) {
     candidates.push({ type: 'TREAT', location: 'Hospital' });
   }
-  // 仅在已有轻微饥饿感时考虑就餐
-  if (agent.hunger >= 25) {
-    candidates.push({ type: 'EAT', location: 'Restaurant' });
-  }
-  // 仅在夜间、清晨或虚弱时考虑休息
-  if (hour >= 21 || hour < 6 || agent.health < 60) {
-    candidates.push({ type: 'SLEEP', location: 'My House' });
-  }
-  // 仅在现金短缺、现金过剩或背负负债时考虑银行
-  if (agent.cash < 15 || agent.cash > 150 || agent.loanBalance > 0) {
+
+  // 银行：现金充裕（存钱）或现金匮乏/有负债（贷款/取款）时提供
+  if (agent.cash >= 40 || agent.cash < 15 || agent.loanBalance > 0) {
     candidates.push({ type: 'BANK', location: 'Bank' });
   }
-  if (candidates.length < 3) {
+
+  // 夜间、清晨或身体虚弱时提供回家睡觉选项
+  if (hour >= 20 || hour < 7 || agent.health < 60) {
+    candidates.push({ type: 'SLEEP', location: 'My House' });
+  }
+
+  if (candidates.length < 2) {
     candidates.push({ type: 'WAIT' });
   }
 

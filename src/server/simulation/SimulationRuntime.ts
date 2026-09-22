@@ -53,6 +53,7 @@ export class SimulationRuntime {
     if (command.type === 'addAgent') this.addAgent();
     if (command.type === 'removeAgent') this.removeAgent();
     if (command.type === 'reset') {
+      const autoStart = typeof (command as any).autoStart === 'boolean' ? (command as any).autoStart : true;
       const { world, agents } = initializeWorld();
       this.behavior = new BehaviorSystem(world);
       this.dialogue = new DialogueSystem();
@@ -60,7 +61,7 @@ export class SimulationRuntime {
         world,
         agents,
         time: 480,
-        isRunning: false,
+        isRunning: autoStart,
         dialogueLog: [],
         priceLevel: 1,
         wageLevel: 1,
