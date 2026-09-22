@@ -19,6 +19,7 @@ export interface JevConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+  timeout?: number;
 }
 
 export interface AppModelSettings {
@@ -43,6 +44,7 @@ export const DEFAULT_MODEL_SETTINGS: AppModelSettings = {
     baseUrl: process.env.NEXT_PUBLIC_TYPESAFE_BASE_URL || 'https://api.typesafe.ai',
     apiKey: process.env.NEXT_PUBLIC_TYPESAFE_API_KEY || '',
     model: process.env.NEXT_PUBLIC_TYPESAFE_DEFAULT_MODEL || 'jev-latest',
+    timeout: 15,
   },
 };
 

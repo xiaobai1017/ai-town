@@ -528,6 +528,25 @@ export function SettingsModal({ isOpen, onClose, onSaved }: SettingsModalProps) 
                 />
               </div>
 
+              {/* JEV 超时时间 */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  请求超时时间 (秒)
+                </label>
+                <input
+                  type="number"
+                  min="5"
+                  max="60"
+                  value={settings.jev.timeout ?? 15}
+                  onChange={(e) => setSettings(s => ({ ...s, jev: { ...s.jev, timeout: Math.max(5, parseInt(e.target.value) || 15) } }))}
+                  placeholder="15"
+                  className="w-full px-3.5 py-2 text-sm bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition font-mono"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  跨地域网络推荐 15~30 秒，包含单次轻量自动重试以提高稳定性。
+                </p>
+              </div>
+
               {/* 测试 JEV 连接 */}
               <div className="pt-2 border-t border-slate-100 flex flex-col gap-2">
                 <div className="flex items-center justify-between">

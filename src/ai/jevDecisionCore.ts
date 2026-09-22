@@ -8,14 +8,40 @@ import type { JevAction, JevDecisionContext } from './JevDecisionProvider';
 import type { JevConfig } from '@/lib/modelSettings';
 
 const envApiKey = process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY;
+
+// TypeSafeClient 实例缓存池，复用底层 TCP/TLS 与 HTTP Keep-Alive 连接
+const clientCache = new Map<string, TypeSafeClient>();
+
+function getOrCreateClient(
+  apiKey: string,
+  baseURL?: string,
+  defaultModel?: string,
+  timeoutMs: number = 15000
+): TypeSafeClient {
+  const model = defaultModel?.trim() || process.env.TYPESAFE_DEFAULT_MODEL || 'jev-latest';
+  const url = baseURL?.trim() || process.env.TYPESAFE_BASE_URL || undefined;
+  const key = `${apiKey}::${url || ''}::${model}::${timeoutMs}`;
+
+  let client = clientCache.get(key);
+  if (!client) {
+    client = new TypeSafeClient({
+      apiKey,
+      baseURL: url,
+      defaultModel: model,
+      timeout: timeoutMs,
+      retry: {
+        maxRetries: 1,
+        backoffInitialMs: 1000,
+        backoffMaxMs: 3000,
+      },
+    });
+    clientCache.set(key, client);
+  }
+  return client;
+}
+
 const defaultClient = envApiKey
-  ? new TypeSafeClient({
-      apiKey: envApiKey,
-      baseURL: process.env.TYPESAFE_BASE_URL,
-      defaultModel: process.env.TYPESAFE_DEFAULT_MODEL || 'jev-latest',
-      timeout: 5000,
-      retry: { maxRetries: 0 }
-    })
+  ? getOrCreateClient(envApiKey, process.env.TYPESAFE_BASE_URL, process.env.TYPESAFE_DEFAULT_MODEL, 15000)
   : null;
 
 const DESCRIPTIONS: Record<string, string> = {
@@ -43,16 +69,18 @@ function isTimeoutError(error: unknown): boolean {
 /** Returns null if JEV is not configured or the request fails. */
 export async function callJev(context: JevDecisionContext, overrideConfig?: Partial<JevConfig>): Promise<JevAction | null> {
   const apiKey = overrideConfig?.apiKey?.trim() || envApiKey;
+  const timeoutSec = overrideConfig?.timeout && overrideConfig.timeout > 0 ? overrideConfig.timeout : 15;
+  const timeoutMs = timeoutSec * 1000;
+
   let activeClient = defaultClient;
 
-  if (overrideConfig?.apiKey?.trim()) {
-    activeClient = new TypeSafeClient({
-      apiKey: overrideConfig.apiKey.trim(),
-      baseURL: overrideConfig.baseUrl?.trim() || process.env.TYPESAFE_BASE_URL || undefined,
-      defaultModel: overrideConfig.model?.trim() || process.env.TYPESAFE_DEFAULT_MODEL || 'jev-latest',
-      timeout: 5000,
-      retry: { maxRetries: 0 }
-    });
+  if (apiKey) {
+    activeClient = getOrCreateClient(
+      apiKey,
+      overrideConfig?.baseUrl,
+      overrideConfig?.model,
+      timeoutMs
+    );
   }
 
   if (!activeClient) {
@@ -88,7 +116,7 @@ export async function callJev(context: JevDecisionContext, overrideConfig?: Part
     // deterministic local-rule fallback, so do not emit a noisy stack trace.
     if (isTimeoutError(error)) {
       if (typeof window === 'undefined') {
-        console.warn(`[JEV] decision timed out for agent ${context.agent?.name}; using local fallback.`);
+        console.warn(`[JEV] decision timed out (${timeoutSec}s) for agent ${context.agent?.name}; using local fallback.`);
       }
     } else {
       console.error('[JEV] decision failed:', error);

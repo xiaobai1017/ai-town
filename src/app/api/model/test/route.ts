@@ -80,12 +80,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ success: false, error: 'JEV API Key 不能为空' });
       }
 
+      const timeoutMs = Math.max(8000, (config.timeout || 15) * 1000);
       const client = new TypeSafeClient({
         apiKey,
         baseURL: baseURL || undefined,
         defaultModel: defaultModel || undefined,
-        timeout: 8000,
-        retry: { maxRetries: 0 },
+        timeout: timeoutMs,
+        retry: { maxRetries: 1, backoffInitialMs: 1000 },
       });
 
       // 验证连接：简单探测

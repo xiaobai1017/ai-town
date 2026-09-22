@@ -17,6 +17,7 @@ export class BehaviorSystem {
     private jevEnabled = false;
     private jevPending = new Set<string>();
     private jevLastDecision = new Map<string, number>();
+    private jevFailures = new Map<string, number>();
     /** Game minutes between JEV decisions per resident. */
     private jevCooldownMinutes = 30;
 
@@ -456,9 +457,13 @@ export class BehaviorSystem {
         const finances = planFinances(agent, this.priceMultiplier, hour);
 
         // JEV only handles ordinary decisions. Safety-critical rules below remain local.
+        const failures = this.jevFailures.get(agent.id) ?? 0;
+        // 失败退避惩罚：每次连续失败额外增加 15 游戏分钟冷却（上限额外 60 分钟），防止失败小人死循环高频轰炸
+        const effectiveCooldown = this.jevCooldownMinutes + Math.min(60, failures * 15);
+
         if (this.jevEnabled && agent.state === 'IDLE' && agent.health >= 80 && agent.hunger <= 35 &&
             !this.jevPending.has(agent.id) &&
-            (this.jevLastDecision.get(agent.id) ?? -Infinity) <= time - this.jevCooldownMinutes) {
+            (this.jevLastDecision.get(agent.id) ?? -Infinity) <= time - effectiveCooldown) {
             if (typeof window === 'undefined') console.log(`[JEV] trigger for ${agent.name} (state=${agent.state} hp=${agent.health} hunger=${agent.hunger})`);
             this.jevPending.add(agent.id);
             agent.jevIntent = { type: 'THINKING', reason: 'JEV 正在分析下一步行动…', time, status: 'thinking' };
@@ -466,8 +471,18 @@ export class BehaviorSystem {
             void requestJevDecision(context).then(action => {
                 this.jevPending.delete(agent.id);
                 this.jevLastDecision.set(agent.id, time);
-                if (action) this.applyJevAction(agent, action, agentIndex, allAgents, time);
-                else agent.jevIntent = { type: 'LOCAL_RULE', reason: 'JEV 暂无可用结果，使用本地规则。', time, status: 'fallback' };
+                if (action) {
+                    this.jevFailures.delete(agent.id);
+                    this.applyJevAction(agent, action, agentIndex, allAgents, time);
+                } else {
+                    const nextFailures = (this.jevFailures.get(agent.id) ?? 0) + 1;
+                    this.jevFailures.set(agent.id, nextFailures);
+                    agent.jevIntent = { type: 'LOCAL_RULE', reason: 'JEV 暂无可用结果，使用本地规则。', time, status: 'fallback' };
+                    // 防呆机制：如果小人依然在 IDLE，随机自主散步，避免小人原地呆立并脱离 IDLE 状态
+                    if (agent.state === 'IDLE' && Math.random() < 0.6) {
+                        this.wander(agent);
+                    }
+                }
             });
             return;
         }
