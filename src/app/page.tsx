@@ -17,10 +17,16 @@ import { Play, Pause, User, Plus, Minus, Skull, Banknote, Coins, ShieldAlert, Ro
 import { SettingsModal } from "@/components/SettingsModal";
 import { loadModelSettings, AppModelSettings, SETTINGS_CHANGE_EVENT } from "@/lib/modelSettings";
 import { useI18n } from "@/lib/i18n";
+import { WEATHER_CONFIGS, WeatherType } from "@/engine/Weather";
 
 export default function Home() {
   const { language, setLanguage, t } = useI18n();
-  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, setLocalAiEnabled, setJevCooldown, replayAvailable, startReplay, stopReplay, restartSimulation } = useGameLoop();
+  const {
+    gameState, togglePause, setSpeed, speed, addAgent, removeAgent,
+    setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, setLocalAiEnabled,
+    setJevCooldown, setWeatherInterval, setWeather, replayAvailable, startReplay,
+    stopReplay, restartSimulation
+  } = useGameLoop();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<TownLocation | null>(null);
   const [historyPair, setHistoryPair] = useState<[Agent, Agent] | null>(null);
@@ -130,6 +136,39 @@ export default function Home() {
 
         {/* 右侧控制与数据区 */}
         <div className="flex items-center gap-2.5 flex-wrap xl:flex-nowrap">
+          {/* 天气状态显示与变换周期调节 */}
+          <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+            <div
+              className="flex items-center gap-1.5 px-2 border-r border-slate-200 text-xs font-bold text-slate-700 select-none"
+              title={`${t('header.weather')}: ${t(`weather.${gameState.weather || 'SUNNY'}`)} - ${WEATHER_CONFIGS[gameState.weather || 'SUNNY']?.descriptionZh || ''}`}
+            >
+              <span className="text-base leading-none">{WEATHER_CONFIGS[gameState.weather || 'SUNNY']?.emoji || '☀️'}</span>
+              <span className="text-slate-800">{t(`weather.${gameState.weather || 'SUNNY'}`)}</span>
+            </div>
+            <div className="flex items-center gap-1 px-1.5" title={t('header.weatherIntervalTip')}>
+              <div className="flex flex-col leading-tight">
+                <span className="text-[9px] text-slate-500 uppercase font-bold">{t('header.weatherInterval')}</span>
+                <span className="text-xs font-black text-sky-700">{gameState.weatherIntervalHours || 4}h</span>
+              </div>
+              <div className="flex flex-col ml-0.5">
+                <button
+                  onClick={() => setWeatherInterval((gameState.weatherIntervalHours || 4) + 1)}
+                  title="增加变换间隔 (+1h)"
+                  className="hover:text-sky-600 p-0.5"
+                >
+                  <Plus size={9} />
+                </button>
+                <button
+                  onClick={() => setWeatherInterval(Math.max(1, (gameState.weatherIntervalHours || 4) - 1))}
+                  title="缩短变换间隔 (-1h)"
+                  className="hover:text-rose-600 p-0.5"
+                >
+                  <Minus size={9} />
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* 居民人数控制 */}
           <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
             <div className="flex items-center gap-1 px-2 border-r border-slate-200 text-xs font-medium text-slate-600">
@@ -283,6 +322,7 @@ export default function Home() {
                 setSelectedAgentId(null);
               }}
               time={gameState.time}
+              weather={gameState.weather}
             />
           </div>
           <p className="mt-1 text-center text-slate-400 text-xs shrink-0">Click on an agent or building for details</p>

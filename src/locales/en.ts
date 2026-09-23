@@ -40,6 +40,17 @@ export const en = {
     restartConfirm: 'Are you sure you want to restart the simulation? Current progress will be reset.',
     modelConfig: 'Model Config',
     language: 'Language',
+    weather: 'Weather',
+    weatherInterval: 'Weather Cycle',
+    weatherIntervalTip: 'Random weather change interval (game hours)',
+  },
+  weather: {
+    SUNNY: 'Sunny',
+    CLOUDY: 'Cloudy',
+    RAINY: 'Rainy',
+    STORMY: 'Stormy',
+    SNOWY: 'Snowy',
+    intervalLabel: '{hours}h/cycle',
   },
   map: {
     controls: 'Map Controls',

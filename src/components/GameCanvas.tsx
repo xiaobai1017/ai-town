@@ -8,6 +8,7 @@ import { World, TileType, Location as TownLocation } from '@/engine/World';
 import { Agent } from '@/engine/Agent';
 import { ZoomIn, ZoomOut, Move, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
+import { WeatherType } from '@/engine/Weather';
 
 interface GameCanvasProps {
     world: World;
@@ -15,9 +16,10 @@ interface GameCanvasProps {
     onSelectAgent: (agent: Agent | null) => void;
     onSelectLocation: (location: TownLocation | null) => void;
     time: number;
+    weather?: WeatherType;
 }
 
-export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, time }: GameCanvasProps) {
+export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, time, weather = 'SUNNY' }: GameCanvasProps) {
     const { t, language } = useI18n();
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -180,7 +182,41 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
             }
         });
 
-    }, [world, agents, time, view, canvasSize, language]);
+        // 渲染屏幕空间天气氛围特效
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        if (weather === 'RAINY' || weather === 'STORMY') {
+            ctx.save();
+            ctx.strokeStyle = weather === 'STORMY' ? 'rgba(147, 197, 253, 0.45)' : 'rgba(186, 230, 253, 0.32)';
+            ctx.lineWidth = weather === 'STORMY' ? 1.5 : 1;
+            const rainCount = weather === 'STORMY' ? 50 : 25;
+            for (let i = 0; i < rainCount; i++) {
+                const rx = ((i * 47 + time * 17) % canvas.width);
+                const ry = ((i * 31 + time * 31) % canvas.height);
+                ctx.beginPath();
+                ctx.moveTo(rx, ry);
+                ctx.lineTo(rx - 5, ry + 14);
+                ctx.stroke();
+            }
+            if (weather === 'STORMY') {
+                ctx.fillStyle = 'rgba(15, 23, 42, 0.12)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }
+            ctx.restore();
+        } else if (weather === 'SNOWY') {
+            ctx.save();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+            for (let i = 0; i < 35; i++) {
+                const sx = ((i * 53 + time * 7) % canvas.width);
+                const sy = ((i * 37 + time * 9) % canvas.height);
+                const r = (i % 3) + 1.2;
+                ctx.beginPath();
+                ctx.arc(sx, sy, r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+    }, [world, agents, time, weather, view, canvasSize, language]);
 
     const [cursor, setCursor] = useState<'grab' | 'grabbing' | 'pointer'>('grab');
 

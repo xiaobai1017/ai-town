@@ -11,6 +11,7 @@ import { BehaviorSystem } from '@/ai/BehaviorSystem';
 import { DialogueSystem, DialoguePacket } from '@/ai/DialogueSystem';
 import { initializeWorld } from '@/data/townScript';
 import { clearReplay, loadReplay, makeReplayFrame, restoreFrame, saveReplay, downsampleFrames, ReplayRecord, ReplayFrame } from '@/replay/SimulationReplay';
+import { WeatherType, shouldChangeWeather, getRandomNextWeather } from '@/engine/Weather';
 
 export interface GameState {
     world: World | null;
@@ -25,6 +26,8 @@ export interface GameState {
     localAiEnabled: boolean;
     jevCooldown: number; // Game minutes between JEV decisions per resident
     isReplaying: boolean;
+    weather: WeatherType;
+    weatherIntervalHours: number;
 }
 
 export function useGameLoop() {
@@ -41,7 +44,9 @@ export function useGameLoop() {
         jevEnabled: false,
         localAiEnabled: true,
         jevCooldown: 30,
-        isReplaying: false
+        isReplaying: false,
+        weather: 'SUNNY',
+        weatherIntervalHours: 4
     });
 
     const stateRef = useRef<GameState>(gameState);
@@ -54,14 +59,21 @@ export function useGameLoop() {
     const recordingRef = useRef<ReplayRecord | null>(null);
     const replayRef = useRef<{ frames: ReplayFrame[]; index: number } | null>(null);
     const [replayAvailable, setReplayAvailable] = useState(false);
+    const lastWeatherChangeTimeRef = useRef<number>(480);
 
     const hydrateServerState = useCallback((raw: any): GameState => {
         const world = Object.assign(new World(raw.world.width, raw.world.height), raw.world);
         const agents = raw.agents.map((item: any) => Object.assign(new Agent(item.id, item.name, item.role, item.position, item.color, item.emoji, item.description), item));
-        return { ...raw, world, agents } as GameState;
+        return {
+            ...raw,
+            world,
+            agents,
+            weather: raw.weather || 'SUNNY',
+            weatherIntervalHours: raw.weatherIntervalHours || 4
+        } as GameState;
     }, []);
 
-    const sendServerCommand = useCallback(async (type: string, value?: number | boolean) => {
+    const sendServerCommand = useCallback(async (type: string, value?: number | boolean | string) => {
         if (!serverMode) return;
         await fetch('/api/simulation', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, value }) });
         // Re-arm polling so the UI reflects the new server state immediately.
@@ -143,7 +155,7 @@ export function useGameLoop() {
         behaviorSystem.setIsRunning(false);
         const dialogueSystem = new DialogueSystem();
 
-        const initialState = {
+        const initialState: GameState = {
             world,
             agents,
             time: 480,
@@ -155,7 +167,9 @@ export function useGameLoop() {
             jevEnabled: false,
             localAiEnabled: true,
             jevCooldown: 30,
-            isReplaying: false
+            isReplaying: false,
+            weather: 'SUNNY',
+            weatherIntervalHours: 4
         };
 
         setGameState(initialState);
@@ -179,7 +193,15 @@ export function useGameLoop() {
                     }
                 } else {
                     const frame = restoreFrame(replay.frames[replay.index]);
-                    const nextState = { ...frame, isRunning: false, isReplaying: true, jevCooldown: stateRef.current.jevCooldown, localAiEnabled: frame.localAiEnabled ?? stateRef.current.localAiEnabled ?? true };
+                    const nextState: GameState = {
+                        ...frame,
+                        isRunning: false,
+                        isReplaying: true,
+                        jevCooldown: stateRef.current.jevCooldown,
+                        localAiEnabled: frame.localAiEnabled ?? stateRef.current.localAiEnabled ?? true,
+                        weather: frame.weather ?? stateRef.current.weather ?? 'SUNNY',
+                        weatherIntervalHours: frame.weatherIntervalHours ?? stateRef.current.weatherIntervalHours ?? 4
+                    };
                     stateRef.current = nextState;
                     setGameState(nextState);
                     lastTimeRef.current = timestamp;
@@ -212,9 +234,17 @@ export function useGameLoop() {
             // Update Time
             const newTime = currentState.time + 1;
 
+            // Update Weather
+            let nextWeather = currentState.weather || 'SUNNY';
+            if (shouldChangeWeather(newTime, lastWeatherChangeTimeRef.current, currentState.weatherIntervalHours || 4)) {
+                nextWeather = getRandomNextWeather(currentState.weather);
+                lastWeatherChangeTimeRef.current = newTime;
+            }
+
             // Update AI
             if (behaviorSystemRef.current) {
                 behaviorSystemRef.current.setEconomicLevels(currentState.priceLevel, currentState.wageLevel, currentState.riskLevel);
+                behaviorSystemRef.current.setWeather?.(nextWeather);
                 behaviorSystemRef.current.update(currentState.agents, newTime);
             }
 
@@ -223,7 +253,7 @@ export function useGameLoop() {
 
             // Update Dialogue
             if (dialogueSystemRef.current) {
-                dialogueSystemRef.current.update(currentState.agents, newTime);
+                dialogueSystemRef.current.update(currentState.agents, newTime, nextWeather);
             }
 
             // Check if all agents are dead
@@ -245,6 +275,7 @@ export function useGameLoop() {
             const newState = {
                 ...currentState,
                 time: newTime,
+                weather: nextWeather,
                 isRunning,
                 dialogueLog: [...(dialogueSystemRef.current?.dialogueLog || [])]
             };
@@ -295,7 +326,15 @@ export function useGameLoop() {
         }
         replayRef.current = { frames: record.frames, index: 0 };
         const frame = restoreFrame(record.frames[0]);
-        const nextState = { ...frame, isRunning: false, isReplaying: true, jevCooldown: stateRef.current.jevCooldown, localAiEnabled: frame.localAiEnabled ?? stateRef.current.localAiEnabled ?? true };
+        const nextState: GameState = {
+            ...frame,
+            isRunning: false,
+            isReplaying: true,
+            jevCooldown: stateRef.current.jevCooldown,
+            localAiEnabled: frame.localAiEnabled ?? stateRef.current.localAiEnabled ?? true,
+            weather: frame.weather ?? stateRef.current.weather ?? 'SUNNY',
+            weatherIntervalHours: frame.weatherIntervalHours ?? stateRef.current.weatherIntervalHours ?? 4
+        };
         stateRef.current = nextState;
         setGameState(nextState);
         lastTimeRef.current = performance.now();
@@ -436,11 +475,27 @@ export function useGameLoop() {
         setGameState(prev => ({ ...prev, jevCooldown: clamped }));
     };
 
+    const setWeatherInterval = (hours: number) => {
+        const clamped = Math.max(1, Math.min(24, Math.round(hours)));
+        if (serverMode) { void sendServerCommand('weatherInterval', clamped); return; }
+        stateRef.current.weatherIntervalHours = clamped;
+        setGameState(prev => ({ ...prev, weatherIntervalHours: clamped }));
+    };
+
+    const setWeather = (weather: WeatherType) => {
+        if (serverMode) { void sendServerCommand('setWeather', weather); return; }
+        stateRef.current.weather = weather;
+        lastWeatherChangeTimeRef.current = stateRef.current.time;
+        behaviorSystemRef.current?.setWeather?.(weather);
+        setGameState(prev => ({ ...prev, weather }));
+    };
+
     const restartSimulation = useCallback(async (autoStart: boolean = true) => {
         clearReplay();
         setReplayAvailable(false);
         recordingRef.current = null;
         replayRef.current = null;
+        lastWeatherChangeTimeRef.current = 480;
 
         if (serverMode) {
             try {
@@ -471,6 +526,7 @@ export function useGameLoop() {
         const { world, agents } = initializeWorld();
         const behaviorSystem = new BehaviorSystem(world);
         behaviorSystem.setIsRunning(autoStart);
+        behaviorSystem.setWeather?.('SUNNY');
         const dialogueSystem = new DialogueSystem();
 
         const resetState: GameState = {
@@ -485,7 +541,9 @@ export function useGameLoop() {
             jevEnabled: stateRef.current.jevEnabled,
             localAiEnabled: stateRef.current.localAiEnabled,
             jevCooldown: stateRef.current.jevCooldown,
-            isReplaying: false
+            isReplaying: false,
+            weather: 'SUNNY',
+            weatherIntervalHours: stateRef.current.weatherIntervalHours || 4
         };
 
         if (autoStart) {
@@ -515,6 +573,8 @@ export function useGameLoop() {
         setJevEnabled,
         setLocalAiEnabled,
         setJevCooldown,
+        setWeatherInterval,
+        setWeather,
         replayAvailable,
         startReplay,
         stopReplay,

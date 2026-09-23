@@ -8,12 +8,14 @@ import { Agent, AgentState } from '../engine/Agent';
 import { World, Location } from '../engine/World';
 import { buildJevContext, requestJevDecision, JevAction, setJevQueuePaused } from './JevDecisionProvider';
 import { planFinances } from './FinancialPlanner';
+import { WeatherType } from '../engine/Weather';
 
 export class BehaviorSystem {
     world: World;
     priceMultiplier: number = 1.0;
     wageMultiplier: number = 1.0;
     riskMultiplier: number = 1.0; // Control probability of accidents/illness
+    private weather: WeatherType = 'SUNNY';
     private isRunning: boolean = true;
     private jevEnabled = false;
     private localAiEnabled = true;
@@ -54,6 +56,8 @@ export class BehaviorSystem {
     setJevEnabled(enabled: boolean) { this.jevEnabled = enabled; }
 
     setLocalAiEnabled(enabled: boolean) { this.localAiEnabled = enabled; }
+
+    setWeather(weather: WeatherType) { this.weather = weather; }
 
     setJevCooldownMinutes(minutes: number) {
         this.jevCooldownMinutes = Math.max(1, minutes);
@@ -683,7 +687,7 @@ export class BehaviorSystem {
             this.jevPending.add(agent.id);
             this.jevPendingTime.set(agent.id, time);
             agent.jevIntent = { type: 'THINKING', reason: 'JEV 正在分析下一步行动…', time, status: 'thinking' };
-            const context = buildJevContext(agent, this.world, time, this.priceMultiplier, this.wageMultiplier, this.riskMultiplier);
+            const context = buildJevContext(agent, this.world, time, this.priceMultiplier, this.wageMultiplier, this.riskMultiplier, this.weather);
             void requestJevDecision(context)
                 .then(action => {
                     if (!this.isRunning) return;

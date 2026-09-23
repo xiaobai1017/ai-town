@@ -8,6 +8,7 @@ import { DialogueSystem } from '@/ai/DialogueSystem';
 import { initializeWorld } from '@/data/townScript';
 import { Agent } from '@/engine/Agent';
 import type { GameState } from '@/hooks/useGameLoop';
+import { WeatherType, shouldChangeWeather, getRandomNextWeather } from '@/engine/Weather';
 
 /** Authoritative server-side simulation. One runtime is kept per Node process. */
 export class SimulationRuntime {
@@ -16,13 +17,30 @@ export class SimulationRuntime {
   private dialogue: DialogueSystem;
   private timer?: ReturnType<typeof setInterval>;
   private speed = 1;
+  private lastWeatherChangeTime = 480;
 
   constructor() {
     const { world, agents } = initializeWorld();
     this.behavior = new BehaviorSystem(world);
     this.behavior.setIsRunning(false);
+    this.behavior.setWeather('SUNNY');
     this.dialogue = new DialogueSystem();
-    this.state = { world, agents, time: 480, isRunning: false, dialogueLog: [], priceLevel: 1, wageLevel: 1, riskLevel: 1, jevEnabled: false, localAiEnabled: true, jevCooldown: 30, isReplaying: false };
+    this.state = {
+      world,
+      agents,
+      time: 480,
+      isRunning: false,
+      dialogueLog: [],
+      priceLevel: 1,
+      wageLevel: 1,
+      riskLevel: 1,
+      jevEnabled: false,
+      localAiEnabled: true,
+      jevCooldown: 30,
+      isReplaying: false,
+      weather: 'SUNNY',
+      weatherIntervalHours: 4
+    };
     this.timer = setInterval(() => this.step(), 100);
   }
 
@@ -70,6 +88,14 @@ export class SimulationRuntime {
       this.state.jevCooldown = Math.max(1, Math.min(120, command.value));
       this.behavior.setJevCooldownMinutes(this.state.jevCooldown);
     }
+    if (command.type === 'weatherInterval' && typeof command.value === 'number') {
+      this.state.weatherIntervalHours = Math.max(1, Math.min(24, Math.round(command.value)));
+    }
+    if (command.type === 'setWeather' && typeof command.value === 'string') {
+      this.state.weather = command.value as WeatherType;
+      this.lastWeatherChangeTime = this.state.time;
+      this.behavior.setWeather(this.state.weather);
+    }
     if (command.type === 'price' && typeof command.value === 'number') this.state.priceLevel = command.value;
     if (command.type === 'wage' && typeof command.value === 'number') this.state.wageLevel = command.value;
     if (command.type === 'risk' && typeof command.value === 'number') this.state.riskLevel = command.value;
@@ -80,7 +106,9 @@ export class SimulationRuntime {
       const { world, agents } = initializeWorld();
       this.behavior = new BehaviorSystem(world);
       this.behavior.setIsRunning(autoStart);
+      this.behavior.setWeather('SUNNY');
       this.dialogue = new DialogueSystem();
+      this.lastWeatherChangeTime = 480;
       this.state = {
         world,
         agents,
@@ -93,7 +121,9 @@ export class SimulationRuntime {
         jevEnabled: this.state.jevEnabled,
         localAiEnabled: this.state.localAiEnabled ?? true,
         jevCooldown: this.state.jevCooldown,
-        isReplaying: false
+        isReplaying: false,
+        weather: 'SUNNY',
+        weatherIntervalHours: this.state.weatherIntervalHours || 4
       };
       return this.state;
     }
@@ -117,13 +147,25 @@ export class SimulationRuntime {
     const steps = Math.max(1, Math.min(20, Math.round(this.speed)));
     for (let i = 0; i < steps && this.state.isRunning; i++) {
       const nextTime = this.state.time + 1;
+      let nextWeather = this.state.weather || 'SUNNY';
+      if (shouldChangeWeather(nextTime, this.lastWeatherChangeTime, this.state.weatherIntervalHours || 4)) {
+        nextWeather = getRandomNextWeather(this.state.weather);
+        this.lastWeatherChangeTime = nextTime;
+      }
       this.behavior.setEconomicLevels(this.state.priceLevel, this.state.wageLevel, this.state.riskLevel);
       this.behavior.setJevCooldownMinutes(this.state.jevCooldown);
+      this.behavior.setWeather(nextWeather);
       this.behavior.update(this.state.agents, nextTime);
       this.state.agents.forEach(agent => agent.update(this.state.world!, this.state.agents));
-      this.dialogue.update(this.state.agents, nextTime);
+      this.dialogue.update(this.state.agents, nextTime, nextWeather);
       const ended = this.state.agents.some(agent => agent.charm >= 100) || this.state.agents.every(agent => agent.state === 'DEAD');
-      this.state = { ...this.state, time: nextTime, isRunning: ended ? false : this.state.isRunning, dialogueLog: [...this.dialogue.dialogueLog] };
+      this.state = {
+        ...this.state,
+        time: nextTime,
+        weather: nextWeather,
+        isRunning: ended ? false : this.state.isRunning,
+        dialogueLog: [...this.dialogue.dialogueLog]
+      };
     }
   }
 }

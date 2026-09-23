@@ -8,6 +8,7 @@ import { generateResponse } from '@/lib/llm';
 import { LLM_MODEL } from '@/lib/config';
 import { getLanguage, t, formatGameTime } from '@/lib/i18nCore';
 import { loadModelSettings } from '@/lib/modelSettings';
+import { WeatherType, WEATHER_CONFIGS } from '../engine/Weather';
 
 export interface DialoguePacket {
     speaker: string;
@@ -24,7 +25,7 @@ export class DialogueSystem {
     constructor() { }
 
     // Check if agents are close enough to talk and if they should talk
-    update(agents: Agent[], gameTime: number) {
+    update(agents: Agent[], gameTime: number, weather: WeatherType = 'SUNNY') {
         // 若系统配置关闭了对话功能，完全不触发居民交谈与大模型调用
         if (!loadModelSettings().llm.enabled) {
             return;
@@ -42,7 +43,7 @@ export class DialogueSystem {
                     a.state !== 'SLEEPING' && b.state !== 'SLEEPING' &&
                     a.state !== 'DEAD' && b.state !== 'DEAD' &&
                     Math.random() < 0.02) {
-                    this.startConversation(a, b, gameTime);
+                    this.startConversation(a, b, gameTime, weather);
                     return; // One per tick to avoid spam
                 }
             }
@@ -129,8 +130,8 @@ export class DialogueSystem {
         return `Your current personal plan is to ${plan}. You may mention it naturally if relevant, but do not describe it as an AI decision.`;
     }
 
-    // Get random conversation topics based on roles, relationship, and time
-    private getRandomTopics(roleA: string, roleB: string, relationship: string, hour: number, isZh: boolean): string[] {
+    // Get random conversation topics based on roles, relationship, time, and weather
+    private getRandomTopics(roleA: string, roleB: string, relationship: string, hour: number, isZh: boolean, weather?: WeatherType): string[] {
         const allTopics: string[] = [];
         
         if (isZh) {
@@ -159,7 +160,19 @@ export class DialogueSystem {
             if (relationship.includes('friend') || relationship.includes('友')) {
                 allTopics.push("近来心境与打算", "共同的美好回忆");
             } else {
-                allTopics.push("小镇晴好天气", "街头新鲜见闻");
+                allTopics.push("小镇街头新鲜见闻", "邻里日常问候");
+            }
+
+            if (weather === 'RAINY') {
+                allTopics.push("雨天出行与带伞", "淅淅沥沥的雨水声");
+            } else if (weather === 'SUNNY') {
+                allTopics.push("明媚的好阳光", "公园散步晒太阳");
+            } else if (weather === 'STORMY') {
+                allTopics.push("轰鸣雷雨与避雨", "恶劣天气的安全");
+            } else if (weather === 'SNOWY') {
+                allTopics.push("下雪与添衣保暖", "面包店暖身热饮");
+            } else if (weather === 'CLOUDY') {
+                allTopics.push("阴凉舒适的好微风");
             }
 
             if (hour < 11) allTopics.push("晨光微风", "香浓早咖啡");
@@ -195,6 +208,19 @@ export class DialogueSystem {
                 allTopics.push("weather", "local events");
             }
 
+            // 融入当前天气的特色话题
+            if (weather === 'RAINY') {
+                allTopics.push(isZh ? "雨天出行与带伞" : "rain and umbrellas", isZh ? "淅淅沥沥的雨水" : "rainy weather");
+            } else if (weather === 'SUNNY') {
+                allTopics.push(isZh ? "明媚的好阳光" : "bright sunshine", isZh ? "公园散步晒太阳" : "sunbathing in the park");
+            } else if (weather === 'STORMY') {
+                allTopics.push(isZh ? "打雷大暴雨" : "heavy thunderstorm", isZh ? "赶快避雨注意安全" : "storm shelter and safety");
+            } else if (weather === 'SNOWY') {
+                allTopics.push(isZh ? "外面下雪了" : "snowing outside", isZh ? "天冷注意添衣保暖" : "cold weather and warm clothes");
+            } else if (weather === 'CLOUDY') {
+                allTopics.push(isZh ? "阴凉舒适的好天气" : "pleasant cloudy breeze");
+            }
+
             if (hour < 11) allTopics.push("morning coffee", "daily plans");
             else if (hour < 15) allTopics.push("lunch plans", "midday activities");
             else if (hour < 19) allTopics.push("afternoon tea", "evening plans");
@@ -212,7 +238,7 @@ export class DialogueSystem {
         }
     }
 
-    async startConversation(a: Agent, b: Agent, gameTime: number) {
+    async startConversation(a: Agent, b: Agent, gameTime: number, weather: WeatherType = 'SUNNY') {
         this.isGenerating = true;
         a.state = 'TALKING';
         b.state = 'TALKING';
@@ -252,7 +278,10 @@ export class DialogueSystem {
             const timeDescEn = `${hour}:${minute.toString().padStart(2, '0')} ${hour < 6 ? "early morning" : hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"}`;
             const timeDescription = isZh ? timeDescZh : timeDescEn;
 
-            const topics = this.getRandomTopics(a.role, b.role, relationshipA, hour, isZh);
+            const weatherMeta = WEATHER_CONFIGS[weather] || WEATHER_CONFIGS.SUNNY;
+            const weatherDesc = isZh ? `${weatherMeta.emoji} ${weatherMeta.nameZh}（${weatherMeta.descriptionZh}）` : `${weatherMeta.emoji} ${weatherMeta.nameEn} (${weatherMeta.descriptionEn})`;
+
+            const topics = this.getRandomTopics(a.role, b.role, relationshipA, hour, isZh, weather);
             const topicHint = topics.length > 0 
                 ? (isZh ? `可以聊到的话题例如：${topics.join('、')}。` : `Consider topics like: ${topics.join(', ')}.`)
                 : '';
@@ -264,18 +293,18 @@ export class DialogueSystem {
             let promptA = '';
             if (isZh) {
                 promptA = `你是${a.name}（${descA}），职务是${roleA}。你当前心情${this.getMood(a, true)}。
-现在是小镇时间${timeDescription}，你迎面遇到了你的${relationshipA}${b.name}（${descB}）。
+现在是小镇时间${timeDescription}，当前天气是【${weatherDesc}】，你迎面遇到了你的${relationshipA}${b.name}（${descB}）。
 ${historyStrA}
 ${topicHint}
 ${decisionHintA}
-请用生动自然简练的口语中文说一句话（严格控制在20个字以内），符合你的身份性格、当前心情与小镇时间。`;
+请用生动自然简练的口语中文说一句话（严格控制在20个字以内），符合你的身份性格、当前心情、天气情况与小镇时间。`;
             } else {
                 promptA = `You are ${a.name} (${a.description}). You are feeling ${this.getMood(a, false)}. 
-It's ${timeDescription}, and you meet ${b.name} (${b.description}), who is your ${relationshipA}. 
+It's ${timeDescription}, the weather is ${weatherDesc}, and you meet ${b.name} (${b.description}), who is your ${relationshipA}. 
 ${historyStrA} 
 ${topicHint}
 ${decisionHintA}
-Say something vivid and expressive (max 15 words) matching your personality, current mood, and the time of day.`;
+Say something vivid and expressive (max 15 words) matching your personality, current mood, weather, and the time of day.`;
             }
 
             const textA_Raw = await generateResponse(LLM_MODEL, promptA);
@@ -290,17 +319,17 @@ Say something vivid and expressive (max 15 words) matching your personality, cur
             let promptB = '';
             if (isZh) {
                 promptB = `你是${b.name}（${descB}），职务是${roleB}。你当前心情${this.getMood(b, true)}。
-现在是小镇时间${timeDescription}，你的${relationshipB}${a.name}对你说：“${textA_Final}”。
+现在是小镇时间${timeDescription}，当前天气是【${weatherDesc}】，你的${relationshipB}${a.name}对你说：“${textA_Final}”。
 ${historyStrB}
 ${decisionHintB}
-请用生动口语中文回应（严格控制在20个字以内），契合你的性格与当前心情。
+请用生动口语中文回应（严格控制在20个字以内），契合你的性格、当前天气与当前心情。
 【重要规则】必须且只能在回复最开头加上一个情感标签：[POS]（满意/开心/赞同）、[NEU]（平淡/中立）或 [NEG]（不满/生气/反感）。例如：[POS] 早上好呀！今天阳光真不错。`;
             } else {
                 promptB = `You are ${b.name} (${b.description}). You are feeling ${this.getMood(b, false)}. 
-It's ${timeDescription}, and ${a.name} (${a.description}), your ${relationshipB}, said: "${textA_Final}". 
+It's ${timeDescription}, the weather is ${weatherDesc}, and ${a.name} (${a.description}), your ${relationshipB}, said: "${textA_Final}". 
 ${historyStrB}
 ${decisionHintB}
-Reply vividly and expressively (max 15 words) matching your personality, current mood, and the time of day. 
+Reply vividly and expressively (max 15 words) matching your personality, current mood, weather, and the time of day. 
 Also, strictly start with a tag: [POS], [NEU], or [NEG] based on your reaction.`;
             }
 

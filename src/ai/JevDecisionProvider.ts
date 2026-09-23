@@ -148,6 +148,8 @@ export function setJevQueuePaused(paused: boolean) {
   jevQueue.setPaused(paused);
 }
 
+import { WeatherType } from '../engine/Weather';
+
 export type JevActionType = 'WORK' | 'EAT' | 'SLEEP' | 'SHOP' | 'LIBRARY' | 'TREAT' | 'BANK' | 'WANDER' | 'WAIT';
 
 export interface JevAction {
@@ -165,6 +167,7 @@ export interface JevDecisionContext {
     wageMultiplier: number;
     riskMultiplier: number;
     locations: { name: string; distance: number }[];
+    weather?: WeatherType;
   };
   objective: {
     healthFloor: number;
@@ -179,7 +182,15 @@ export interface JevDecisionContext {
 
 const ALLOWED_ACTIONS = new Set<JevActionType>(['WORK', 'EAT', 'SLEEP', 'SHOP', 'LIBRARY', 'TREAT', 'BANK', 'WANDER', 'WAIT']);
 
-export function buildJevContext(agent: Agent, world: World, time: number, priceMultiplier: number, wageMultiplier: number, riskMultiplier: number): JevDecisionContext {
+export function buildJevContext(
+  agent: Agent,
+  world: World,
+  time: number,
+  priceMultiplier: number,
+  wageMultiplier: number,
+  riskMultiplier: number,
+  weather: WeatherType = 'SUNNY'
+): JevDecisionContext {
   const locations = world.locations.map(location => ({
     name: location.name,
     distance: Math.abs(agent.position.x - location.entry.x) + Math.abs(agent.position.y - location.entry.y)
@@ -195,7 +206,7 @@ export function buildJevContext(agent: Agent, world: World, time: number, priceM
 
   const isNight = hour >= 22 || hour < 7;
 
-  // 动态丰富候选动作：兼顾多样性与作息时段真实感
+  // 动态丰富候选动作：兼顾多样性、作息时段与当前天气状况
   const candidates: JevAction[] = [];
 
   if (isNight) {
@@ -215,8 +226,15 @@ export function buildJevContext(agent: Agent, world: World, time: number, priceM
     // 偶尔睡不着在院子/街边稍事休息
     candidates.push({ type: 'WAIT' });
   } else {
-    // 日间与傍晚时段 (7:00 ~ 22:00)：正常生活、工作与休闲娱乐
-    candidates.push({ type: 'WANDER', location: 'Park' });
+    // 日间与傍晚时段 (7:00 ~ 22:00)：根据天气动态调整户外活动与室内活动
+    // 雷雨天尽量不在户外漫步，晴天与阴天积极漫步公园
+    if (weather !== 'STORMY') {
+      candidates.push({ type: 'WANDER', location: 'Park' });
+    } else {
+      // 恶劣雷雨天，优先考虑就近到建筑内避雨或回家
+      candidates.push({ type: 'WAIT' });
+      candidates.push({ type: 'SLEEP', location: 'My House' });
+    }
 
     // 工作时段 (8:00 ~ 17:00) 提供工作选项
     if (hour >= 8 && hour < 18) {
@@ -225,7 +243,8 @@ export function buildJevContext(agent: Agent, world: World, time: number, priceM
 
     // 饥饿感出现时提供就餐选项（优先考虑资金与偏好）
     if (agent.hunger >= 20) {
-      const prefersBakery = agent.cash < (0.05 * priceMultiplier) || agent.bankBalance < 10;
+      // 雪天或雨天更倾向于去 Bakery 喝热饮取暖
+      const prefersBakery = weather === 'SNOWY' || agent.cash < (0.05 * priceMultiplier) || agent.bankBalance < 10;
       candidates.push({ type: 'EAT', location: prefersBakery ? 'Bakery' : 'Restaurant' });
     }
 
@@ -234,7 +253,7 @@ export function buildJevContext(agent: Agent, world: World, time: number, priceM
       candidates.push({ type: 'SHOP', location: 'Mall' });
     }
 
-    // 状态安全时提供图书馆静心阅读 (开馆时段 8:00 ~ 21:00)
+    // 状态安全时提供图书馆静心阅读 (开馆时段 8:00 ~ 21:00)；雨雪天也是极佳的室内阅览去处
     if (canReadSafely && hour >= 8 && hour < 21) {
       candidates.push({ type: 'LIBRARY', location: 'Library' });
     }
@@ -266,7 +285,7 @@ export function buildJevContext(agent: Agent, world: World, time: number, priceM
       cash: agent.cash, bankBalance: agent.bankBalance, loanBalance: agent.loanBalance,
       charm: agent.charm, memory: agent.memory
     },
-    world: { time, hour, priceMultiplier, wageMultiplier, riskMultiplier, locations },
+    world: { time, hour, priceMultiplier, wageMultiplier, riskMultiplier, locations, weather },
     objective: { healthFloor, hungerCeiling, charmTarget: 100, priority: 'health_then_charm', safeReserve: finances.safeReserve, disposableFunds: finances.disposableFunds },
     candidates
   };

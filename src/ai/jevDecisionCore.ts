@@ -6,6 +6,7 @@
 import { choice, TypeSafeClient } from '@typesafe-ai/sdk';
 import type { JevAction, JevDecisionContext } from './JevDecisionProvider';
 import type { JevConfig } from '@/lib/modelSettings';
+import { WeatherType, WEATHER_CONFIGS } from '../engine/Weather';
 
 const envApiKey = process.env.TYPESAFE_API_KEY || process.env.JEV_API_KEY;
 
@@ -60,17 +61,27 @@ export function formatJevReason(
   type: string,
   location?: string,
   confidence?: number,
-  agent?: { name?: string; role?: string; hunger?: number; health?: number }
+  agent?: { name?: string; role?: string; hunger?: number; health?: number },
+  weather?: WeatherType
 ): string {
   const confText = typeof confidence === 'number' ? ` (置信度 ${(confidence * 100).toFixed(0)}%)` : '';
   switch (type) {
     case 'EAT':
+      if (weather === 'SNOWY') {
+        return `外面飘着小雪寒气袭人，前往${location || '面包房'}点一份刚出炉的热食暖饮，驱散寒意补充能量。${confText}`;
+      }
       return location === 'Bakery'
         ? `腹中微饥，前往面包房买些新鲜出炉的美味点心垫垫肚子。${confText}`
         : `饥饿感上升，前往餐厅享用一份热气腾腾的丰盛餐品补充能量。${confText}`;
     case 'SHOP':
+      if (weather === 'RAINY' || weather === 'STORMY') {
+        return `室外阴雨绵绵，前往商场室内漫步选购品质好物，避雨的同时提升生活品质。${confText}`;
+      }
       return `当前资金充裕且身心健康，前往商场选购品质好物提升个人魅力。${confText}`;
     case 'LIBRARY':
+      if (weather === 'RAINY' || weather === 'STORMY') {
+        return `窗外细雨蒙蒙，前往图书馆静心研读图书借以避雨，在墨香中提升修养与心境。${confText}`;
+      }
       return `向往知识与宁静，前往图书馆静心研读图书，陶冶情操提升修养。${confText}`;
     case 'WORK':
       return `作为一名敬业的${agent?.role || '居民'}，前往${location || '工作岗位'}专心工作，赚取稳定报酬。${confText}`;
@@ -79,12 +90,24 @@ export function formatJevReason(
     case 'TREAT':
       return `感觉身体健康状态有所欠佳，前往医院接受医生诊断与康复治疗。${confText}`;
     case 'SLEEP':
+      if (weather === 'STORMY') {
+        return `外面雷雨交加，决定尽快返回家中就寝安歇避雨，养精蓄锐。${confText}`;
+      }
       return `感到有些疲惫困倦，决定返回家中就寝休息，养精蓄锐。${confText}`;
     case 'WANDER':
+      if (weather === 'SUNNY') {
+        return `今日艳阳高照微风和煦，前往小镇公园惬意漫步赏景，享受美好日光。${confText}`;
+      }
+      if (weather === 'RAINY') {
+        return `撑着雨伞在细雨霏霏的街头信步漫游，享受雨中小镇别样的清幽宁静。${confText}`;
+      }
       return location === 'Park'
         ? `忙里偷闲，前往小镇公园惬意漫步赏景，放松身心。${confText}`
         : `在小镇街头悠闲漫步，享受轻松自由的街区时光。${confText}`;
     case 'WAIT':
+      if (weather === 'STORMY') {
+        return `外面突降大雷雨，先在屋檐或室内稍事避雨休整。${confText}`;
+      }
       return `周围状态平稳，在原地稍作休整与观察。${confText}`;
     default:
       return `综合权衡当前生理状态与发展目标，决定执行 ${type} 行动。${confText}`;
@@ -139,6 +162,8 @@ export async function callJevBatch(
 
   const firstWorld = contexts[0]?.world;
   const hour = firstWorld?.hour ?? 12;
+  const weather = firstWorld?.weather || 'SUNNY';
+  const weatherMeta = WEATHER_CONFIGS[weather] || WEATHER_CONFIGS.SUNNY;
   const isNight = hour >= 22 || hour < 7;
 
   const questions: Record<string, any> = {};
@@ -161,8 +186,8 @@ export async function callJevBatch(
     );
 
     const promptText = isNight
-      ? `It is currently late night in AI Town (${hour}:00). Resident ${agent.name} (${agent.role}) should rest or take essential care. Choose the best candidate action.`
-      : `Choose the best candidate action for resident ${agent.name} (${agent.role}) balancing health, hunger, financial security, and charm aspirations.`;
+      ? `It is currently late night in AI Town (${hour}:00) and the weather is ${weatherMeta.nameEn} (${weatherMeta.emoji}). Resident ${agent.name} (${agent.role}) should rest or take essential care. Choose the best candidate action.`
+      : `The weather in AI Town is currently ${weatherMeta.nameEn} (${weatherMeta.emoji}: ${weatherMeta.descriptionEn}). Choose the best candidate action for resident ${agent.name} (${agent.role}) balancing health, hunger, financial security, charm, and current weather.`;
 
     const qKey = `action_${agent.id}`;
     questions[qKey] = choice(promptText, criteria);
@@ -183,7 +208,7 @@ export async function callJevBatch(
 
   if (typeof window === 'undefined') {
     const names = contexts.map(c => c.agent?.name).join(', ');
-    console.log(`[JEV] calling systemOne batch for ${contexts.length} agents: [${names}]`);
+    console.log(`[JEV] calling systemOne batch for ${contexts.length} agents (weather: ${weather}): [${names}]`);
   }
 
   try {
@@ -209,7 +234,7 @@ export async function callJevBatch(
           resultMap.set(agent.id, {
             type: chosenType as JevAction['type'],
             location: matchingCandidate?.location,
-            reason: formatJevReason(chosenType, matchingCandidate?.location, confidence, agent)
+            reason: formatJevReason(chosenType, matchingCandidate?.location, confidence, agent, weather)
           });
         }
       }

@@ -40,6 +40,17 @@ export const zh = {
     restartConfirm: '确定要重新开始一局模拟吗？当前模拟进度将被重置。',
     modelConfig: '模型设置',
     language: '语言',
+    weather: '天气',
+    weatherInterval: '天气变换',
+    weatherIntervalTip: '天气随机轮换周期（游戏小时）',
+  },
+  weather: {
+    SUNNY: '晴朗',
+    CLOUDY: '多云',
+    RAINY: '小雨',
+    STORMY: '雷阵雨',
+    SNOWY: '小雪',
+    intervalLabel: '{hours}小时/次',
   },
   map: {
     controls: '地图控制',

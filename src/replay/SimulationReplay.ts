@@ -6,6 +6,7 @@
 import { Agent } from '@/engine/Agent';
 import { World } from '@/engine/World';
 import type { DialoguePacket } from '@/ai/DialogueSystem';
+import type { WeatherType } from '@/engine/Weather';
 
 export const REPLAY_STORAGE_KEY = 'ai-town-latest-replay-v1';
 const MAX_REPLAY_FRAMES = 240;
@@ -20,6 +21,8 @@ export interface ReplayFrame {
   riskLevel: number;
   jevEnabled: boolean;
   localAiEnabled?: boolean;
+  weather?: WeatherType;
+  weatherIntervalHours?: number;
 }
 
 export interface ReplayRecord {
