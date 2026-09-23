@@ -50,21 +50,47 @@ export function makeReplayFrame(state: Omit<ReplayFrame, 'world' | 'agents'> & {
   return frame;
 }
 
+/**
+ * 等距降采样算法：
+ * 严格保留 frames[0]（第一天开局初始帧）与 frames[last]（最新时刻帧），
+ * 中间帧按均匀步长采样，保证整个时间轴从 Day 1 开局到当前始终完整连续，避免滑动窗口切除头部历史。
+ * @author hubin
+ */
+export function downsampleFrames<T>(frames: T[], targetMax: number): T[] {
+  if (frames.length <= targetMax) return frames;
+  if (targetMax <= 1) return [frames[0]];
+  if (targetMax === 2) return [frames[0], frames[frames.length - 1]];
+
+  const result: T[] = new Array(targetMax);
+  result[0] = frames[0];
+  result[targetMax - 1] = frames[frames.length - 1];
+
+  const totalSteps = targetMax - 1;
+  const originalLength = frames.length - 1;
+
+  for (let i = 1; i < totalSteps; i++) {
+    const idx = Math.round((i * originalLength) / totalSteps);
+    result[i] = frames[idx];
+  }
+
+  return result;
+}
+
 export function saveReplay(record: ReplayRecord) {
   if (typeof window === 'undefined') return;
   try {
     const bounded = record.frames.length > MAX_REPLAY_FRAMES
-      ? { ...record, frames: record.frames.slice(-MAX_REPLAY_FRAMES) }
+      ? { ...record, frames: downsampleFrames(record.frames, MAX_REPLAY_FRAMES) }
       : record;
     window.localStorage.setItem(REPLAY_STORAGE_KEY, JSON.stringify(bounded));
   } catch (error) {
     // Quota errors must never stop the simulation. Retry with a smaller
-    // rolling window, retaining the most recent state for replay.
+    // downsampled record, retaining the start frame and latest frame.
     if (error instanceof DOMException && error.name === 'QuotaExceededError') {
       try {
         window.localStorage.setItem(
           REPLAY_STORAGE_KEY,
-          JSON.stringify({ ...record, frames: record.frames.slice(-60) })
+          JSON.stringify({ ...record, frames: downsampleFrames(record.frames, 60) })
         );
       } catch {
         // Storage is optional; gameplay continues without persistence.

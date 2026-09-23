@@ -10,7 +10,7 @@ import { Agent } from '@/engine/Agent';
 import { BehaviorSystem } from '@/ai/BehaviorSystem';
 import { DialogueSystem, DialoguePacket } from '@/ai/DialogueSystem';
 import { initializeWorld } from '@/data/townScript';
-import { clearReplay, loadReplay, makeReplayFrame, restoreFrame, saveReplay, ReplayRecord, ReplayFrame } from '@/replay/SimulationReplay';
+import { clearReplay, loadReplay, makeReplayFrame, restoreFrame, saveReplay, downsampleFrames, ReplayRecord, ReplayFrame } from '@/replay/SimulationReplay';
 
 export interface GameState {
     world: World | null;
@@ -74,6 +74,15 @@ export function useGameLoop() {
     const pollRef = useRef<(() => Promise<void>) | null>(null);
 
     useEffect(() => {
+        // 无论何种模式，挂载时优先检查本地历史录制记录并恢复，保证 Day 1 开局历史不被空白覆盖
+        const existingRecord = loadReplay();
+        if (existingRecord && Array.isArray(existingRecord.frames) && existingRecord.frames.length > 0) {
+            recordingRef.current = existingRecord;
+            setReplayAvailable(true);
+        } else {
+            setReplayAvailable(false);
+        }
+
         if (serverMode) {
             let active = true;
             let timer: ReturnType<typeof setTimeout>;
@@ -83,15 +92,44 @@ export function useGameLoop() {
                     const response = await fetch('/api/simulation', { cache: 'no-store' });
                     if (active) {
                         const next = hydrateServerState(await response.json());
-                        stateRef.current = next;
-                        setGameState(next);
+                        // 重放播放期间，不让轮询覆盖回放状态
+                        if (!stateRef.current.isReplaying) {
+                            stateRef.current = next;
+                            setGameState(next);
+
+                            // 在服务端仿真运行时，按时间推进自动录制帧供前端重放
+                            if (next.isRunning && next.world && next.agents) {
+                                if (!recordingRef.current) {
+                                    recordingRef.current = { version: 1, createdAt: new Date().toISOString(), frames: [] };
+                                }
+                                const frames = recordingRef.current.frames;
+                                const lastFrame = frames[frames.length - 1];
+
+                                // 检测服务端是否重置回第一天或时间倒退（若倒退则重置录制帧）
+                                if (lastFrame && next.time < lastFrame.time) {
+                                    recordingRef.current.frames = [];
+                                }
+
+                                // 初始帧必录，之后每 5 个游戏分钟录制一帧
+                                const shouldRecord = recordingRef.current.frames.length === 0 || 
+                                    (next.time - recordingRef.current.frames[recordingRef.current.frames.length - 1].time >= 5);
+
+                                if (shouldRecord) {
+                                    recordingRef.current.frames.push(makeReplayFrame({ ...next, world: next.world, agents: next.agents }));
+                                    // 内存缓冲区超额时通过等距降采样平滑控制在 240 帧内，始终严格保留 Day 1 初始帧与最新帧
+                                    if (recordingRef.current.frames.length > 300) {
+                                        recordingRef.current.frames = downsampleFrames(recordingRef.current.frames, 240);
+                                    }
+                                    saveReplay(recordingRef.current);
+                                    setReplayAvailable(true);
+                                }
+                            }
+                        }
                     }
                 } catch { /* server may still be starting */ }
                 if (!active) return;
-                // Only keep polling while the simulation is running. When
-                // stopped, the loop terminates; user actions (toggle, speed,
-                // etc.) call pollRef.current() to re-arm it.
-                if (stateRef.current.isRunning) {
+                // Only keep polling while the simulation is running and not in replay.
+                if (stateRef.current.isRunning && !stateRef.current.isReplaying) {
                     timer = setTimeout(poll, 250);
                 }
             };
@@ -100,7 +138,6 @@ export function useGameLoop() {
             return () => { active = false; pollRef.current = null; clearTimeout(timer); };
         }
         // Initialize
-        setReplayAvailable(Boolean(loadReplay()));
         const { world, agents } = initializeWorld();
         const behaviorSystem = new BehaviorSystem(world);
         behaviorSystem.setIsRunning(false);
@@ -128,7 +165,7 @@ export function useGameLoop() {
     }, [hydrateServerState, serverMode]);
 
     const tick = useCallback((timestamp: number) => {
-        if (serverMode) return;
+        // 1. 如果正在进行回放，无论是否为 serverMode，均由客户端逐帧驱动播放历史画面
         if (replayRef.current) {
             if (timestamp - lastTimeRef.current >= 100) {
                 const replay = replayRef.current;
@@ -137,6 +174,9 @@ export function useGameLoop() {
                     replayRef.current = null;
                     stateRef.current = { ...stateRef.current, isRunning: false, isReplaying: false };
                     setGameState({ ...stateRef.current });
+                    if (serverMode) {
+                        void pollRef.current?.();
+                    }
                 } else {
                     const frame = restoreFrame(replay.frames[replay.index]);
                     const nextState = { ...frame, isRunning: false, isReplaying: true, jevCooldown: stateRef.current.jevCooldown, localAiEnabled: frame.localAiEnabled ?? stateRef.current.localAiEnabled ?? true };
@@ -148,6 +188,9 @@ export function useGameLoop() {
             requestRef.current = setTimeout(() => tick(performance.now()), 50);
             return;
         }
+
+        // 2. 非回放状态下：若是 serverMode，仿真由服务端主导，客户端不执行本地物理仿真
+        if (serverMode) return;
         if (!stateRef.current.isRunning) {
             lastTimeRef.current = timestamp;
             requestRef.current = setTimeout(() => tick(performance.now()), 50);
@@ -208,8 +251,8 @@ export function useGameLoop() {
 
             if (recordingRef.current && newTime % 5 === 0) {
                 recordingRef.current.frames.push(makeReplayFrame({ ...newState, world, agents: currentState.agents }));
-                if (recordingRef.current.frames.length > 240) {
-                    recordingRef.current.frames.splice(0, recordingRef.current.frames.length - 240);
+                if (recordingRef.current.frames.length > 300) {
+                    recordingRef.current.frames = downsampleFrames(recordingRef.current.frames, 240);
                 }
                 saveReplay(recordingRef.current);
                 setReplayAvailable(true);
@@ -246,19 +289,27 @@ export function useGameLoop() {
 
     const startReplay = () => {
         const record = loadReplay();
-        if (!record) return;
+        if (!record || !record.frames || record.frames.length === 0) return;
+        if (serverMode) {
+            void sendServerCommand('pause');
+        }
         replayRef.current = { frames: record.frames, index: 0 };
         const frame = restoreFrame(record.frames[0]);
         const nextState = { ...frame, isRunning: false, isReplaying: true, jevCooldown: stateRef.current.jevCooldown, localAiEnabled: frame.localAiEnabled ?? stateRef.current.localAiEnabled ?? true };
         stateRef.current = nextState;
         setGameState(nextState);
         lastTimeRef.current = performance.now();
+        if (requestRef.current) clearTimeout(requestRef.current);
+        requestRef.current = setTimeout(() => tick(performance.now()), 50);
     };
 
     const stopReplay = () => {
         replayRef.current = null;
         stateRef.current.isReplaying = false;
         setGameState(prev => ({ ...prev, isReplaying: false }));
+        if (serverMode) {
+            void pollRef.current?.();
+        }
     };
 
     const addAgent = () => {
@@ -388,6 +439,8 @@ export function useGameLoop() {
     const restartSimulation = useCallback(async (autoStart: boolean = true) => {
         clearReplay();
         setReplayAvailable(false);
+        recordingRef.current = null;
+        replayRef.current = null;
 
         if (serverMode) {
             try {
@@ -401,6 +454,12 @@ export function useGameLoop() {
                     const freshState = hydrateServerState(freshData);
                     stateRef.current = freshState;
                     setGameState(freshState);
+                    if (freshState.world && freshState.agents) {
+                        const initialFrame = makeReplayFrame({ ...freshState, world: freshState.world, agents: freshState.agents });
+                        recordingRef.current = { version: 1, createdAt: new Date().toISOString(), frames: [initialFrame] };
+                        saveReplay(recordingRef.current);
+                        setReplayAvailable(true);
+                    }
                     void pollRef.current?.();
                     return freshState;
                 }
@@ -432,6 +491,8 @@ export function useGameLoop() {
         if (autoStart) {
             const initialFrame = makeReplayFrame({ ...resetState, world, agents });
             recordingRef.current = { version: 1, createdAt: new Date().toISOString(), frames: [initialFrame] };
+            saveReplay(recordingRef.current);
+            setReplayAvailable(true);
         }
 
         stateRef.current = resetState;
