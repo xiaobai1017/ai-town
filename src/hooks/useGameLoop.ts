@@ -103,6 +103,7 @@ export function useGameLoop() {
         setReplayAvailable(Boolean(loadReplay()));
         const { world, agents } = initializeWorld();
         const behaviorSystem = new BehaviorSystem(world);
+        behaviorSystem.setIsRunning(false);
         const dialogueSystem = new DialogueSystem();
 
         const initialState = {
@@ -239,6 +240,7 @@ export function useGameLoop() {
             setReplayAvailable(true);
         }
         stateRef.current.isRunning = !stateRef.current.isRunning;
+        behaviorSystemRef.current?.setIsRunning(stateRef.current.isRunning);
         setGameState(prev => ({ ...prev, isRunning: !prev.isRunning }));
     };
 
@@ -409,6 +411,7 @@ export function useGameLoop() {
 
         const { world, agents } = initializeWorld();
         const behaviorSystem = new BehaviorSystem(world);
+        behaviorSystem.setIsRunning(autoStart);
         const dialogueSystem = new DialogueSystem();
 
         const resetState: GameState = {

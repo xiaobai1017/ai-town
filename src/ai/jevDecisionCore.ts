@@ -132,10 +132,16 @@ export async function callJev(context: JevDecisionContext, overrideConfig?: Part
       .filter((type): type is string => Boolean(type)));
     const criteria = Object.fromEntries([...availableTypes].map(type => [type, DESCRIPTIONS[type] || 'A safe available action.']));
 
+    const hour = context?.world?.hour ?? 12;
+    const isNight = hour >= 22 || hour < 7;
+    const promptText = isNight
+      ? `It is currently late night in AI Town (${hour}:00). Residents naturally need to return home to sleep (SLEEP) to rest and recharge, unless urgent medical treatment is needed. Choose the best candidate action.`
+      : 'Choose the best candidate action for the resident balancing health, hunger, financial security, and charm aspirations.';
+
     const result = await activeClient.systemOne({
       state: context as any as Record<string, any>,
       questions: {
-        action: choice('Choose the best candidate action for the resident balancing health, hunger, financial security, and charm aspirations.', criteria)
+        action: choice(promptText, criteria)
       }
     });
     const type = result.answers.action.choice;

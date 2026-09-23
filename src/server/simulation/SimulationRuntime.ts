@@ -20,6 +20,7 @@ export class SimulationRuntime {
   constructor() {
     const { world, agents } = initializeWorld();
     this.behavior = new BehaviorSystem(world);
+    this.behavior.setIsRunning(false);
     this.dialogue = new DialogueSystem();
     this.state = { world, agents, time: 480, isRunning: false, dialogueLog: [], priceLevel: 1, wageLevel: 1, riskLevel: 1, jevEnabled: false, localAiEnabled: true, jevCooldown: 30, isReplaying: false };
     this.timer = setInterval(() => this.step(), 100);
@@ -32,12 +33,22 @@ export class SimulationRuntime {
       clearInterval(this.timer);
       this.timer = undefined;
     }
+    this.behavior.setIsRunning(false);
   }
 
   command(command: { type: string; value?: number | boolean }) {
-    if (command.type === 'toggle') this.state.isRunning = !this.state.isRunning;
-    if (command.type === 'pause') this.state.isRunning = false;
-    if (command.type === 'start') this.state.isRunning = true;
+    if (command.type === 'toggle') {
+      this.state.isRunning = !this.state.isRunning;
+      this.behavior.setIsRunning(this.state.isRunning);
+    }
+    if (command.type === 'pause') {
+      this.state.isRunning = false;
+      this.behavior.setIsRunning(false);
+    }
+    if (command.type === 'start') {
+      this.state.isRunning = true;
+      this.behavior.setIsRunning(true);
+    }
     if (command.type === 'speed' && typeof command.value === 'number') this.speed = Math.max(1, Math.min(20, command.value));
     if (command.type === 'jev' && typeof command.value === 'boolean') {
       this.state.jevEnabled = command.value;
@@ -68,6 +79,7 @@ export class SimulationRuntime {
       const autoStart = typeof (command as any).autoStart === 'boolean' ? (command as any).autoStart : true;
       const { world, agents } = initializeWorld();
       this.behavior = new BehaviorSystem(world);
+      this.behavior.setIsRunning(autoStart);
       this.dialogue = new DialogueSystem();
       this.state = {
         world,

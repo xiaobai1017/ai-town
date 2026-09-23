@@ -6,7 +6,7 @@
 
 import { Agent, AgentState } from '../engine/Agent';
 import { World, Location } from '../engine/World';
-import { buildJevContext, requestJevDecision, JevAction } from './JevDecisionProvider';
+import { buildJevContext, requestJevDecision, JevAction, setJevQueuePaused } from './JevDecisionProvider';
 import { planFinances } from './FinancialPlanner';
 
 export class BehaviorSystem {
@@ -14,17 +14,35 @@ export class BehaviorSystem {
     priceMultiplier: number = 1.0;
     wageMultiplier: number = 1.0;
     riskMultiplier: number = 1.0; // Control probability of accidents/illness
+    private isRunning: boolean = true;
     private jevEnabled = false;
     private localAiEnabled = true;
     private jevPending = new Set<string>();
     private jevLastDecision = new Map<string, number>();
     private jevFailures = new Map<string, number>();
+    private jevPendingTime = new Map<string, number>();
+    private agentStateDuration = new Map<string, { state: AgentState; ticks: number }>();
     private localLastDecision = new Map<string, number>();
     /** Game minutes between JEV decisions per resident. */
     private jevCooldownMinutes = 30;
 
     constructor(world: World) {
         this.world = world;
+    }
+
+    setIsRunning(running: boolean) {
+        this.isRunning = running;
+        if (!running) {
+            setJevQueuePaused(true);
+            this.jevPending.clear();
+            this.jevPendingTime.clear();
+        } else {
+            setJevQueuePaused(false);
+        }
+    }
+
+    getIsRunning(): boolean {
+        return this.isRunning;
     }
 
     setEconomicLevels(price: number, wage: number, risk: number) {
@@ -68,6 +86,14 @@ export class BehaviorSystem {
 
         agents.forEach((agent, index) => {
             if (agent.state === 'DEAD') return;
+
+            const curStateDur = this.agentStateDuration.get(agent.id);
+            if (curStateDur && curStateDur.state === agent.state) {
+                curStateDur.ticks++;
+            } else {
+                this.agentStateDuration.set(agent.id, { state: agent.state, ticks: 1 });
+            }
+            const stateDuration = this.agentStateDuration.get(agent.id)!.ticks;
 
             // Track visits
             const locAt = this.world.locations.find(loc =>
@@ -126,54 +152,48 @@ export class BehaviorSystem {
 
             // Hunger logic: increases over time, decreases when eating
             if (agent.state === 'EATING') {
-                agent.hunger = Math.max(0, agent.hunger - 6.0); // Faster recovery
-                agent.health = Math.min(100, agent.health + 0.2); // Recover health while eating
+                agent.hunger = Math.max(0, agent.hunger - 1.5); // Natural meal duration (~15-20 ticks)
+                agent.health = Math.min(100, agent.health + 0.15); // Recover health while eating
 
                 let cost = 0.05 * this.priceMultiplier; // Default: Restaurant
                 if (locAt?.name === 'Bakery') cost = 0.03 * this.priceMultiplier;
-                if (locAt?.name === 'My House') cost = 0.01 * this.priceMultiplier;
+                if (locAt?.name === 'My House') cost = 0.0; // Home food is free
 
-                let hasPaid = false;
-                if (agent.cash >= cost) {
-                    agent.cash -= cost;
-                    hasPaid = true;
-                } else if (agent.bankBalance >= cost) {
-                    agent.bankBalance -= cost;
-                    hasPaid = true;
-                }
-
-                if (hasPaid) {
-                    if (locAt) {
-                        locAt.stats.revenue += cost;
-                        this.logBuildingTransaction(locAt, cost, `Food purchase from ${agent.name}`, time);
+                // Charge once per meal session rather than every tick
+                if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || !agent.sessionFinance.description.startsWith('Food')) {
+                    let hasPaid = false;
+                    if (cost === 0) {
+                        hasPaid = true;
+                    } else if (agent.cash >= cost) {
+                        agent.cash -= cost;
+                        hasPaid = true;
+                    } else if (agent.bankBalance >= cost) {
+                        agent.bankBalance -= cost;
+                        hasPaid = true;
                     }
 
-                    // Keep the exact venue in the ledger so Bakery purchases are
-                    // recorded separately from Restaurant and home meals.
-                    const foodVenue = locAt?.name || 'Local Area';
-                    if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || agent.sessionFinance.description !== `Food at ${foodVenue}`) {
-                        agent.sessionFinance = { amount: 0, description: `Food at ${locAt?.name || 'Local Area'}`, type: 'expense' };
-                    }
-                    agent.sessionFinance.amount -= cost;
-                }
-
-                if (agent.cash < cost && agent.bankBalance < cost) {
-                    // Fallback logic: If too broke for here, try a cheaper place
-                    if (locAt?.name === 'Restaurant' || locAt?.name === 'Bakery') {
-                        agent.state = 'IDLE'; // Force re-decision in decideAction
+                    if (hasPaid) {
+                        if (locAt && cost > 0) {
+                            locAt.stats.revenue += cost;
+                            if (!locAt.stats.sessionRevenue) locAt.stats.sessionRevenue = {};
+                            locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + cost;
+                        }
+                        const foodVenue = locAt?.name || 'Local Area';
+                        agent.sessionFinance = { amount: -cost, description: `Food at ${foodVenue}`, type: 'expense' };
+                    } else {
+                        // Cannot afford meal at this venue, fallback to home or idle
+                        agent.state = 'IDLE';
                         agent.conversation = "Too expensive here! I need something cheaper.";
                         agent.conversationTTL = 30;
-                        if (locAt.entry) {
+                        if (locAt && locAt.entry) {
                             agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
                         }
-                    } else {
-                        agent.state = 'IDLE';
-                        agent.conversation = "I'm completely broke and starving!";
-                        agent.conversationTTL = 50;
                     }
-                } else if (agent.hunger === 0) {
+                }
+
+                if (agent.hunger === 0 || stateDuration >= 25) {
                     agent.state = 'IDLE';
-                    agent.conversation = "I'm full!";
+                    agent.conversation = "I'm full and energized!";
                     agent.conversationTTL = 40;
                     // 吃饱后主动迈步移向门外，腾出室内空位给其他顾客
                     if (locAt && locAt.entry) {
@@ -219,40 +239,47 @@ export class BehaviorSystem {
 
             // Shopping logic: High-end consumption at the Mall
             if (agent.state === 'SHOPPING') {
-                const luxuryCost = Math.max(5.0, 0.5 * this.priceMultiplier); // Minimum $5.00 spending
-                let hasPaid = false;
-                if (agent.cash >= luxuryCost) {
-                    agent.cash -= luxuryCost;
-                    hasPaid = true;
-                } else if (agent.bankBalance >= luxuryCost) {
-                    agent.bankBalance -= luxuryCost;
-                    hasPaid = true;
-                }
-
-                if (hasPaid) {
-                    agent.health = Math.min(100, agent.health + 0.5); // Luxury care
-                    if (locAt) {
-                        locAt.stats.revenue += luxuryCost;
-                        if (!locAt.stats.sessionRevenue) locAt.stats.sessionRevenue = {};
-                        locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + luxuryCost;
+                const luxuryCost = Math.max(5.0, 0.5 * this.priceMultiplier); // $5.00 spending per session
+                // Charge once per shopping session
+                if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || agent.sessionFinance.description !== 'Luxury Shopping') {
+                    let hasPaid = false;
+                    if (agent.cash >= luxuryCost) {
+                        agent.cash -= luxuryCost;
+                        hasPaid = true;
+                    } else if (agent.bankBalance >= luxuryCost) {
+                        agent.bankBalance -= luxuryCost;
+                        hasPaid = true;
                     }
-                    if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || agent.sessionFinance.description !== 'Luxury Shopping') {
-                        agent.sessionFinance = { amount: 0, description: 'Luxury Shopping', type: 'expense' };
-                    }
-                    agent.sessionFinance.amount -= luxuryCost;
 
-                    // Charm system: increase charm based on shopping amount
-                    agent.increaseCharm(luxuryCost, time);
-                    
-                    if (Math.random() < 0.05) {
+                    if (hasPaid) {
+                        agent.health = Math.min(100, agent.health + 2.0); // Luxury self-care
+                        if (locAt) {
+                            locAt.stats.revenue += luxuryCost;
+                            if (!locAt.stats.sessionRevenue) locAt.stats.sessionRevenue = {};
+                            locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + luxuryCost;
+                        }
+                        agent.sessionFinance = { amount: -luxuryCost, description: 'Luxury Shopping', type: 'expense' };
+                        agent.increaseCharm(luxuryCost, time);
+                        agent.conversation = `Bought something exquisite! Charm is now ${Math.round(agent.charm)}!`;
+                        agent.conversationTTL = 40;
+                    } else {
                         agent.state = 'IDLE';
-                        agent.conversation = `Great shopping! My charm is now ${Math.round(agent.charm)}!`;
+                        agent.conversation = "Too expensive! I'm out of here.";
                         agent.conversationTTL = 50;
+                        if (locAt && locAt.entry) {
+                            agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
+                        }
                     }
                 } else {
-                    agent.state = 'IDLE';
-                    agent.conversation = "Too expensive! I'm out of here.";
-                    agent.conversationTTL = 50;
+                    // Already purchased: agent enjoys browsing for a realistic session (~15 ticks)
+                    if (Math.random() < 0.07 || stateDuration >= 25) {
+                        agent.state = 'IDLE';
+                        agent.conversation = `Great shopping! My charm is now ${Math.round(agent.charm)}!`;
+                        agent.conversationTTL = 40;
+                        if (locAt && locAt.entry) {
+                            agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
+                        }
+                    }
                 }
             } else {
                 if (agent.sessionFinance && agent.sessionFinance.type === 'expense' && agent.sessionFinance.description === 'Luxury Shopping') {
@@ -273,38 +300,48 @@ export class BehaviorSystem {
 
             // Health and Sickness logic
             if (agent.state === 'TREATING') {
-                agent.health = Math.min(100, agent.health + 1.0);
+                agent.health = Math.min(100, agent.health + 2.0);
                 const cost = 0.2 * this.priceMultiplier;
-                let hasPaid = false;
-                if (agent.cash >= cost) {
-                    agent.cash -= cost;
-                    hasPaid = true;
-                } else if (agent.bankBalance >= cost) {
-                    agent.bankBalance -= cost;
-                    hasPaid = true;
-                }
 
-                if (hasPaid) {
-                    const hospital = this.world.locations.find(l => l.name === 'Hospital');
-                    if (hospital) {
-                        hospital.stats.revenue += cost;
-                        this.logBuildingTransaction(hospital, cost, `Treatment consumption from ${agent.name}`, time);
+                // Pay fee once per treatment/checkup session
+                if (!agent.sessionFinance || agent.sessionFinance.description !== 'Hospital Treatment') {
+                    let hasPaid = false;
+                    if (agent.cash >= cost) {
+                        agent.cash -= cost;
+                        hasPaid = true;
+                    } else if (agent.bankBalance >= cost) {
+                        agent.bankBalance -= cost;
+                        hasPaid = true;
                     }
 
-                    if (!agent.sessionFinance || agent.sessionFinance.description !== 'Hospital Treatment') {
-                        agent.sessionFinance = { amount: 0, description: 'Hospital Treatment', type: 'expense' };
+                    if (hasPaid) {
+                        const hospital = this.world.locations.find(l => l.name === 'Hospital');
+                        if (hospital) {
+                            hospital.stats.revenue += cost;
+                            if (!hospital.stats.sessionRevenue) hospital.stats.sessionRevenue = {};
+                            hospital.stats.sessionRevenue[agent.id] = (hospital.stats.sessionRevenue[agent.id] || 0) + cost;
+                        }
+                        agent.sessionFinance = { amount: -cost, description: 'Hospital Treatment', type: 'expense' };
+                        agent.conversation = agent.health < 90 ? "Receiving medical care from Doctor Frank." : "Routine physical examination complete!";
+                        agent.conversationTTL = 30;
+                    } else {
+                        agent.state = 'IDLE';
+                        agent.conversation = "I can't afford medical treatment!";
+                        agent.conversationTTL = 50;
+                        if (locAt && locAt.entry) {
+                            agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
+                        }
                     }
-                    agent.sessionFinance.amount -= cost;
-                }
-
-                if (agent.cash < cost && agent.bankBalance < cost) {
-                    agent.state = 'IDLE';
-                    agent.conversation = "I can't afford treatment anymore!";
-                    agent.conversationTTL = 50;
-                } else if (agent.health === 100) {
-                    agent.state = 'IDLE';
-                    agent.conversation = "I feel much better now!";
-                    agent.conversationTTL = 50;
+                } else {
+                    // Consultation/recovery completed after a realistic session (~10-15 ticks) or fully recovered
+                    if ((agent.health >= 100 && Math.random() < 0.1) || stateDuration >= 25) {
+                        agent.state = 'IDLE';
+                        agent.conversation = "I feel healthy and revitalized!";
+                        agent.conversationTTL = 40;
+                        if (locAt && locAt.entry) {
+                            agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
+                        }
+                    }
                 }
             } else {
                 if (agent.sessionFinance && agent.sessionFinance.description === 'Hospital Treatment') {
@@ -337,6 +374,30 @@ export class BehaviorSystem {
                 // Chronic health decay if not being treated
                 if (agent.health < 100) {
                     agent.health = Math.max(0, agent.health - 0.02);
+                }
+            }
+
+            // Sleeping logic: Natural sleep cycle and wake up in morning
+            if (agent.state === 'SLEEPING') {
+                agent.health = Math.min(100, agent.health + 0.2); // 睡眠修护体力与健康
+                agent.hunger = Math.min(100, agent.hunger + 0.015); // 慢速代谢
+                const hour = Math.floor(time / 60) % 24;
+                const isDaytime = hour >= 7 && hour < 22;
+                const isCriticalHunger = agent.hunger >= 85;
+                const isCriticalHealth = agent.health < 30;
+
+                // 清晨 7:00 之后自然醒来，或者由于极度饥饿/严重病痛惊醒
+                if (isDaytime || isCriticalHunger || isCriticalHealth) {
+                    agent.state = 'IDLE';
+                    agent.conversation = isCriticalHunger
+                        ? "Woke up starving! Need food immediately!"
+                        : isCriticalHealth
+                        ? "Woke up in severe pain! Need to see a doctor!"
+                        : "Good morning! Slept well, ready for a new day!";
+                    agent.conversationTTL = 40;
+                    if (locAt && locAt.entry) {
+                        agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
+                    }
                 }
             }
 
@@ -406,7 +467,7 @@ export class BehaviorSystem {
             // Banking logic: Move cash to/from bank
             if (agent.state === 'BANKING') {
                 const bank = this.world.locations.find(l => l.name === 'Bank');
-                if (bank && this.isAt(agent, bank.interior || bank.entry)) {
+                if (bank && locAt?.name === 'Bank') {
                     const needsEmergencyLoan = (agent.health < 70 || agent.hunger > 80) && agent.cash < 10 && agent.bankBalance < 20;
 
                     if (needsEmergencyLoan) {
@@ -427,18 +488,29 @@ export class BehaviorSystem {
                         agent.cash += 20;
                         agent.logTransaction(20, "Withdraw for bills", 'bank', time);
                         this.logBuildingTransaction(bank, -20, `Withdrawal (Health) by ${agent.name}`, time);
-                        bank.stats.extra!.withdrawals += 20;
+                        if (!bank.stats.extra) bank.stats.extra = { deposits: 0, withdrawals: 0, loans: 0 };
+                        bank.stats.extra.withdrawals += 20;
                         agent.conversation = "Withdrew money for medical bills!";
-                    } else if (agent.bankBalance >= 50 && agent.cash < 5 && Math.random() < 0.05) {
-                        // Regular Withdraw: Rare and only if nearly out of cash
-                        const amount = 50;
+                    } else if (agent.cash < 10 && agent.bankBalance < 10 && agent.loanBalance < 200) {
+                        // Personal/Living loan: funds are low and resident visited bank to secure finances
+                        const loanAmount = 30;
+                        agent.loanBalance += loanAmount;
+                        agent.cash += loanAmount;
+                        agent.logTransaction(loanAmount, "Bank Loan", 'loan', time);
+                        this.logBuildingTransaction(bank, loanAmount, `Bank Loan to ${agent.name}`, time);
+                        if (!bank.stats.extra) bank.stats.extra = { deposits: 0, withdrawals: 0, loans: 0 };
+                        bank.stats.extra.loans = (bank.stats.extra.loans || 0) + loanAmount;
+                        agent.conversation = "Secured a personal loan to support daily living!";
+                    } else if (agent.bankBalance >= 20 && agent.cash < 10) {
+                        // Regular Withdraw: cash on hand is low, draw $20 from savings
+                        const amount = Math.min(20, agent.bankBalance);
                         agent.bankBalance -= amount;
                         agent.cash += amount;
                         agent.logTransaction(amount, "Bank Withdrawal", 'bank', time);
                         this.logBuildingTransaction(bank, -amount, `Regular Withdrawal by ${agent.name}`, time);
                         if (!bank.stats.extra) bank.stats.extra = { deposits: 0, withdrawals: 0, loans: 0 };
                         bank.stats.extra.withdrawals += amount;
-                        agent.conversation = "Withdrew some cash for future needs.";
+                        agent.conversation = `Withdrew $${amount.toFixed(2)} cash for daily expenses.`;
                     } else {
                         // Deposit surplus cash while preserving the financial safety reserve.
                         const hour = Math.floor(time / 60) % 24;
@@ -452,10 +524,15 @@ export class BehaviorSystem {
                             if (!bank.stats.extra) bank.stats.extra = { deposits: 0, withdrawals: 0, loans: 0 };
                             bank.stats.extra.deposits = (bank.stats.extra.deposits || 0) + depositAmount;
                             agent.conversation = `Deposited $${depositAmount.toFixed(2)} for a safer future.`;
+                        } else {
+                            agent.conversation = "Checked my account balance. All in order!";
                         }
                     }
                     agent.state = 'IDLE';
                     agent.conversationTTL = 50;
+                    if (bank.entry) {
+                        agent.moveTo({ x: bank.entry.x, y: bank.entry.y + 1 }, this.world);
+                    }
                 }
             }
 
@@ -492,6 +569,8 @@ export class BehaviorSystem {
     }
 
     decideAction(agent: Agent, agentIndex: number, time: number, allAgents: Agent[]) {
+        if (!this.isRunning) return;
+
         const hour = Math.floor(time / 60) % 24;
         const totalWealth = agent.cash + agent.bankBalance;
         const finances = planFinances(agent, this.priceMultiplier, hour);
@@ -577,6 +656,16 @@ export class BehaviorSystem {
         }
 
         // 2. JEV 核心智能决策入口：
+        // 超时自愈：如果某个 agent 处于 jevPending 超过 15 个游戏分钟（或系统卡单），强制清理 pending 锁
+        const pendingStartTime = this.jevPendingTime.get(agent.id);
+        if (pendingStartTime !== undefined && (time - pendingStartTime > 15)) {
+            this.jevPending.delete(agent.id);
+            this.jevPendingTime.delete(agent.id);
+            if (agent.jevIntent?.status === 'thinking') {
+                agent.jevIntent = undefined;
+            }
+        }
+
         // 扩展可触发状态：当居民空闲 (IDLE)、或已完成持续阶段 (READING/WORKING 达到冷却间隔)、或饥饿度上升 (>= 50) 时，均允许 JEV 统筹评估并分配下一步行动
         const failures = this.jevFailures.get(agent.id) ?? 0;
         const baseCooldown = agent.hunger > 60 ? Math.max(5, Math.floor(this.jevCooldownMinutes / 3)) : this.jevCooldownMinutes;
@@ -592,29 +681,60 @@ export class BehaviorSystem {
             (this.jevLastDecision.get(agent.id) ?? -Infinity) <= time - effectiveCooldown) {
             if (typeof window === 'undefined') console.log(`[JEV] trigger for ${agent.name} (state=${agent.state} hp=${agent.health} hunger=${agent.hunger})`);
             this.jevPending.add(agent.id);
+            this.jevPendingTime.set(agent.id, time);
             agent.jevIntent = { type: 'THINKING', reason: 'JEV 正在分析下一步行动…', time, status: 'thinking' };
             const context = buildJevContext(agent, this.world, time, this.priceMultiplier, this.wageMultiplier, this.riskMultiplier);
-            void requestJevDecision(context).then(action => {
-                this.jevPending.delete(agent.id);
-                this.jevLastDecision.set(agent.id, time);
-                if (action) {
-                    this.jevFailures.delete(agent.id);
-                    this.applyJevAction(agent, action, agentIndex, allAgents, time);
-                } else {
-                    const nextFailures = (this.jevFailures.get(agent.id) ?? 0) + 1;
-                    this.jevFailures.set(agent.id, nextFailures);
-                    if (this.localAiEnabled) {
-                        agent.recordDecision({ type: 'LOCAL_RULE', reason: 'JEV 暂无可用结果，转由本地规则接管。', time, status: 'fallback' }, 'LOCAL_RULE');
+            void requestJevDecision(context)
+                .then(action => {
+                    if (!this.isRunning) return;
+                    this.jevLastDecision.set(agent.id, time);
+                    if (action) {
+                        this.jevFailures.delete(agent.id);
+                        this.applyJevAction(agent, action, agentIndex, allAgents, time);
+                    } else {
+                        const nextFailures = (this.jevFailures.get(agent.id) ?? 0) + 1;
+                        this.jevFailures.set(agent.id, nextFailures);
+                        if (this.localAiEnabled) {
+                            agent.recordDecision({ type: 'LOCAL_RULE', reason: 'JEV 暂无可用结果，转由本地规则接管。', time, status: 'fallback' }, 'LOCAL_RULE');
+                        }
+                        if (agent.state === 'IDLE' && Math.random() < 0.6) {
+                            this.wander(agent);
+                        }
                     }
-                    if (agent.state === 'IDLE' && Math.random() < 0.6) {
-                        this.wander(agent);
+                })
+                .catch(err => {
+                    console.error(`[JEV] Decision request error for ${agent.name}:`, err);
+                    if (agent.jevIntent?.status === 'thinking') {
+                        agent.jevIntent = undefined;
                     }
-                }
-            });
+                })
+                .finally(() => {
+                    this.jevPending.delete(agent.id);
+                    this.jevPendingTime.delete(agent.id);
+                });
             return;
         }
 
-        // 3. 本地常规决策频次控制与开关检查
+        // 3. 深夜统一回家就寝保底（22:00 ~ 7:00）
+        // 拟真人类作息准则：深更半夜在街头闲逛不仅不合常理，也容易造成行为发散。
+        // 无论何种 AI 模式，只要小人处于空闲 (IDLE) 且无紧急生存救治，统一返回家中就寝安歇。
+        if (hour >= 22 || hour < 7) {
+            if (agent.state === 'IDLE') {
+                const sleepReason = `夜色深沉，返回家中就寝安歇。`;
+                if (this.localAiEnabled) {
+                    this.recordLocalDecision(agent, 'SLEEP', 'My House', sleepReason, time);
+                } else {
+                    agent.recordDecision({ type: 'SLEEP', location: 'My House', reason: `[自然作息] ${sleepReason}`, time, status: 'planned' }, 'SYSTEM');
+                }
+                this.ensureAtLocation(agent, agentIndex, 'My House', 'SLEEPING', allAgents);
+                return;
+            }
+            if (agent.state === 'SLEEPING') {
+                return; // 正在家中熟睡修护
+            }
+        }
+
+        // 4. 本地常规决策频次控制与开关检查
         // 若关闭本地AI，则不执行任何本地常规决策，小人行动只由 JEV 驱动
         const canLocalDecide = this.canMakeLocalDecision(agent, time, false);
 
@@ -623,13 +743,6 @@ export class BehaviorSystem {
             if (agent.state === 'MOVING' || agent.state === 'WORKING' || agent.state === 'EATING' || 
                 agent.state === 'SHOPPING' || agent.state === 'READING' || agent.state === 'TREATING' || agent.state === 'BANKING') {
                 return; // 保持正在进行的行为
-            }
-            if (this.localAiEnabled && (hour >= 22 || hour < 8)) {
-                // 夜间静默就寝（不重复写决策日志）
-                if (agent.state !== 'SLEEPING') {
-                    this.ensureAtLocation(agent, agentIndex, 'My House', 'SLEEPING', allAgents);
-                }
-                return;
             }
             if (agent.state === 'IDLE') {
                 if (Math.random() < 0.05) this.wander(agent);
@@ -707,7 +820,7 @@ export class BehaviorSystem {
         }
 
         // 日常日程计划：睡觉、上班、午餐、下午工作、晚间休闲
-        if (hour >= 22 || hour < 8) {
+        if (hour >= 22 || hour < 7) {
             if (agent.state !== 'SLEEPING') {
                 this.recordLocalDecision(agent, 'SLEEP', 'My House', `夜幕深沉，返回家中就寝安歇。`, time);
                 this.ensureAtLocation(agent, agentIndex, 'My House', 'SLEEPING', allAgents);
@@ -815,17 +928,26 @@ export class BehaviorSystem {
         }
     }
 
-    private hasAvailableSlot(locationName: string, allAgents: Agent[]): boolean {
+    private hasAvailableSlot(locationName: string, allAgents: Agent[], currentAgentId?: string): boolean {
+        // 家 (My House) 是全镇居民的共同家园与睡眠归宿，无条件永远向居民敞开，绝不阻拦回家
+        if (locationName === 'My House') return true;
+
         const location = this.world.locations.find(item => item.name === locationName);
         if (!location || !location.interior || !location.width || !location.height) return true;
-        // 餐厅等高频进出建筑，将舒适容量严格限制为 3 人，避免小人扎堆死锁
-        const maxComfort = locationName === 'Restaurant' ? 3 : Math.min(4, Math.max(1, (location.width - 2) * (location.height - 2)));
+        // 餐厅保持 3~4 人舒适进餐容量，其余建筑按内部面积（9 格地砖）允许舒适容纳 6 人
+        const maxComfort = locationName === 'Restaurant' ? 3 : 6;
         const occupants = allAgents.filter(other => {
             if (other.state === 'DEAD') return false;
+            if (currentAgentId && other.id === currentAgentId) return false;
             const at = other.position;
-            const target = other.targetPosition;
             const inside = (point: { x: number; y: number }) => point.x >= location.x! + 1 && point.x < location.x! + location.width! - 1 && point.y >= location.y! + 1 && point.y < location.y! + location.height! - 1;
-            return inside(at) || Boolean(target && inside(target));
+            if (inside(at)) return true;
+            // 仅当其他小人已非常接近门口 (<= 2 格) 且目标在室内时，才计入即将进入者，避免远距离霸占名额
+            if (other.targetPosition && inside(other.targetPosition)) {
+                const distToEntry = Math.abs(other.position.x - location.entry.x) + Math.abs(other.position.y - location.entry.y);
+                return distToEntry <= 2;
+            }
+            return false;
         }).length;
         return occupants < maxComfort;
     }
@@ -843,12 +965,12 @@ export class BehaviorSystem {
         }
 
         // 优先根据容量与预算分流
-        if (funds >= restaurantCost && this.hasAvailableSlot('Restaurant', allAgents)) return 'Restaurant';
-        if (funds >= bakeryCost && this.hasAvailableSlot('Bakery', allAgents)) return 'Bakery';
-        if (funds >= homeCost && this.hasAvailableSlot('My House', allAgents)) return 'My House';
+        if (funds >= restaurantCost && this.hasAvailableSlot('Restaurant', allAgents, agent.id)) return 'Restaurant';
+        if (funds >= bakeryCost && this.hasAvailableSlot('Bakery', allAgents, agent.id)) return 'Bakery';
+        if (funds >= homeCost && this.hasAvailableSlot('My House', allAgents, agent.id)) return 'My House';
 
         // 若热门餐厅客满但急需进食，分流至面包店或家
-        if (funds >= bakeryCost && this.hasAvailableSlot('Bakery', allAgents)) return 'Bakery';
+        if (funds >= bakeryCost && this.hasAvailableSlot('Bakery', allAgents, agent.id)) return 'Bakery';
         if (funds >= homeCost) return 'My House';
 
         return null;
@@ -900,7 +1022,7 @@ export class BehaviorSystem {
         const alreadyInside = location.x !== undefined && location.y !== undefined && location.width !== undefined && location.height !== undefined &&
             agent.position.x >= location.x + 1 && agent.position.x < location.x + location.width - 1 &&
             agent.position.y >= location.y + 1 && agent.position.y < location.y + location.height - 1;
-        if (!alreadyInside && !this.hasAvailableSlot(location.name, allAgents)) {
+        if (!alreadyInside && !this.hasAvailableSlot(location.name, allAgents, agent.id)) {
             agent.state = 'IDLE';
             agent.arrivalState = undefined;
             agent.conversation = `${location.name} is full. I'll try another place.`;

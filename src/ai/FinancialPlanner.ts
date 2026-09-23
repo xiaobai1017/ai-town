@@ -1,3 +1,8 @@
+/**
+ * 财务规划与预算安全线分析
+ * @author hubin
+ */
+
 import { Agent } from '../engine/Agent';
 
 export interface FinancialPlan {

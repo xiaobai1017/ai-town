@@ -9,16 +9,46 @@ import { planFinances } from './FinancialPlanner';
 import { callJev } from './jevDecisionCore';
 import { loadModelSettings } from '@/lib/modelSettings';
 
-/** 全局 JEV 请求错峰与限流调度队列，限制最大并发避免冲垮网络 */
+/** 全局 JEV 请求错峰与限流调度队列，限制最大并发避免冲垮网络，支持仿真暂停时瞬间清空取消 */
 class JevRequestQueue {
   private inFlight = 0;
   private readonly maxConcurrent = 2;
-  private queue: Array<() => void> = [];
+  private queue: Array<{ run: () => void; cancel: () => void }> = [];
   private lastDispatchTime = 0;
+  private isPaused = false;
 
-  async enqueue<T>(fn: () => Promise<T>): Promise<T> {
+  setPaused(paused: boolean) {
+    this.isPaused = paused;
+    if (paused) {
+      this.clear();
+    }
+  }
+
+  clear() {
+    const pending = [...this.queue];
+    this.queue = [];
+    pending.forEach(item => item.cancel());
+  }
+
+  async enqueue<T>(fn: () => Promise<T>): Promise<T | null> {
+    if (this.isPaused) {
+      return null;
+    }
+
     if (this.inFlight >= this.maxConcurrent) {
-      await new Promise<void>(resolve => this.queue.push(resolve));
+      let cancelled = false;
+      await new Promise<void>(resolve => {
+        this.queue.push({
+          run: () => resolve(),
+          cancel: () => {
+            cancelled = true;
+            resolve();
+          }
+        });
+      });
+      if (cancelled || this.isPaused) {
+        return null;
+      }
     }
     this.inFlight++;
 
@@ -28,21 +58,29 @@ class JevRequestQueue {
     if (waitMs > 0) {
       await new Promise(resolve => setTimeout(resolve, waitMs));
     }
+    if (this.isPaused) {
+      this.inFlight--;
+      return null;
+    }
     this.lastDispatchTime = Date.now();
 
     try {
       return await fn();
     } finally {
       this.inFlight--;
-      if (this.queue.length > 0) {
+      if (this.queue.length > 0 && !this.isPaused) {
         const next = this.queue.shift();
-        next?.();
+        next?.run();
       }
     }
   }
 }
 
 const jevQueue = new JevRequestQueue();
+
+export function setJevQueuePaused(paused: boolean) {
+  jevQueue.setPaused(paused);
+}
 
 export type JevActionType = 'WORK' | 'EAT' | 'SLEEP' | 'SHOP' | 'LIBRARY' | 'TREAT' | 'BANK' | 'WANDER' | 'WAIT';
 
@@ -89,45 +127,66 @@ export function buildJevContext(agent: Agent, world: World, time: number, priceM
     finances.canShop && agent.charm < 100;
   const canReadSafely = agent.health >= 55 && agent.hunger <= 55 && agent.charm < 100;
 
-  // 动态丰富候选动作：兼顾多样性与适度选项数量（保持 3~6 个贴合情境的候选）
-  const candidates: JevAction[] = [
-    { type: 'WANDER', location: 'Park' },
-  ];
+  const isNight = hour >= 22 || hour < 7;
 
-  // 白天工作时段提供工作选项
-  if (hour >= 7 && hour < 20) {
-    candidates.push({ type: 'WORK', location: workLocation(agent) });
-  }
+  // 动态丰富候选动作：兼顾多样性与作息时段真实感
+  const candidates: JevAction[] = [];
 
-  // 饥饿感出现时提供就餐选项（优先考虑资金与偏好）
-  if (agent.hunger >= 20) {
-    const prefersBakery = agent.cash < (0.05 * priceMultiplier) || agent.bankBalance < 10;
-    candidates.push({ type: 'EAT', location: prefersBakery ? 'Bakery' : 'Restaurant' });
-  }
-
-  // 资金充裕且基本需求满足时提供商场消费
-  if (canPursueCharmSafely) {
-    candidates.push({ type: 'SHOP', location: 'Mall' });
-  }
-
-  // 状态安全时提供图书馆静心阅读
-  if (canReadSafely) {
-    candidates.push({ type: 'LIBRARY', location: 'Library' });
-  }
-
-  // 健康受损时提供就医选项
-  if (agent.health < 85) {
-    candidates.push({ type: 'TREAT', location: 'Hospital' });
-  }
-
-  // 银行：现金充裕（存钱）或现金匮乏/有负债（贷款/取款）时提供
-  if (agent.cash >= 40 || agent.cash < 15 || agent.loanBalance > 0) {
-    candidates.push({ type: 'BANK', location: 'Bank' });
-  }
-
-  // 夜间、清晨或身体虚弱时提供回家睡觉选项
-  if (hour >= 20 || hour < 7 || agent.health < 60) {
+  if (isNight) {
+    // 深夜时段 (22:00 ~ 7:00)：以居家就寝休息恢复精力为主
     candidates.push({ type: 'SLEEP', location: 'My House' });
+
+    // 若深夜感到饥饿，提供在家吃些简餐补充体力
+    if (agent.hunger >= 35) {
+      candidates.push({ type: 'EAT', location: 'My House' });
+    }
+
+    // 若身体欠佳急需救治，依然提供急诊就医
+    if (agent.health < 65) {
+      candidates.push({ type: 'TREAT', location: 'Hospital' });
+    }
+
+    // 偶尔睡不着在院子/街边稍事休息
+    candidates.push({ type: 'WAIT' });
+  } else {
+    // 日间与傍晚时段 (7:00 ~ 22:00)：正常生活、工作与休闲娱乐
+    candidates.push({ type: 'WANDER', location: 'Park' });
+
+    // 工作时段 (8:00 ~ 17:00) 提供工作选项
+    if (hour >= 8 && hour < 18) {
+      candidates.push({ type: 'WORK', location: workLocation(agent) });
+    }
+
+    // 饥饿感出现时提供就餐选项（优先考虑资金与偏好）
+    if (agent.hunger >= 20) {
+      const prefersBakery = agent.cash < (0.05 * priceMultiplier) || agent.bankBalance < 10;
+      candidates.push({ type: 'EAT', location: prefersBakery ? 'Bakery' : 'Restaurant' });
+    }
+
+    // 资金充裕且基本需求满足时提供商场消费 (商业时段 9:00 ~ 21:00)
+    if (canPursueCharmSafely && hour >= 9 && hour < 21) {
+      candidates.push({ type: 'SHOP', location: 'Mall' });
+    }
+
+    // 状态安全时提供图书馆静心阅读 (开馆时段 8:00 ~ 21:00)
+    if (canReadSafely && hour >= 8 && hour < 21) {
+      candidates.push({ type: 'LIBRARY', location: 'Library' });
+    }
+
+    // 健康受损时提供就医选项
+    if (agent.health < 85) {
+      candidates.push({ type: 'TREAT', location: 'Hospital' });
+    }
+
+    // 银行：营业时段 (9:00 ~ 17:00) 且现金充裕（存钱）或现金匮乏/有负债（贷款/取款）时提供
+    if (hour >= 9 && hour < 17 && (agent.cash >= 40 || agent.cash < 15 || agent.loanBalance > 0)) {
+      candidates.push({ type: 'BANK', location: 'Bank' });
+    }
+
+    // 晚间疲惫时提前提供回家休息选项 (20:00 之后或身体虚弱)
+    if (hour >= 20 || agent.health < 55) {
+      candidates.push({ type: 'SLEEP', location: 'My House' });
+    }
   }
 
   if (candidates.length < 2) {

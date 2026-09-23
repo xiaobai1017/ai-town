@@ -1,4 +1,9 @@
 
+/**
+ * 小镇初始世界与居民配置
+ * @author hubin
+ */
+
 import { Agent } from '../engine/Agent';
 import { World } from '../engine/World';
 
@@ -18,9 +23,11 @@ export function initializeWorld(): { world: World, agents: Agent[] } {
     // Manually add specific locations if we want more control than the random generator
     // (The generator in World.ts does some basic stuff already)
 
-    const agents = INITIAL_AGENTS.map(data =>
-        new Agent(data.id, data.name, data.role, data.start, data.color, data.emoji, data.description)
-    );
+    const agents = INITIAL_AGENTS.map(data => {
+        const agent = new Agent(data.id, data.name, data.role, data.start, data.color, data.emoji, data.description);
+        agent.cash = 20.0;
+        return agent;
+    });
 
     return { world, agents };
 }

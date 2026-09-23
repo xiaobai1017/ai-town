@@ -65,7 +65,7 @@ export class Agent {
     emoji: string;
     conversation: string | null = null;
     conversationTTL: number = 0;
-    cash: number = 0;
+    cash: number = 20.0;
     bankBalance: number = 0;
     loanBalance: number = 0; // Outstanding debt to the bank
     hunger: number = 0; // 0 to 100, 100 is starving
