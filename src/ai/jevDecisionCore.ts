@@ -47,10 +47,10 @@ const defaultClient = envApiKey
 
 const DESCRIPTIONS: Record<string, string> = {
   WORK: 'Work diligently at your assigned role to earn income.',
-  EAT: 'Have a nutritious meal at the Restaurant or Bakery to relieve hunger.',
+  EAT: 'Have a hearty meal at the Restaurant to deeply relieve hunger and regain stamina, or enjoy fresh snacks at the Bakery.',
   SLEEP: 'Return home to sleep and recharge physical energy.',
-  SHOP: 'Shop at the Mall to boost personal charm and lifestyle when finances are safe.',
-  LIBRARY: 'Read books quietly at the Library for steady, zero-cost charm and intellect growth.',
+  SHOP: 'Visit the Mall to shop trendy items, browse stores, and greatly boost personal charm, happiness, and social style.',
+  LIBRARY: 'Read books quietly at the Library for cultural study and steady intellect growth.',
   TREAT: 'Visit the Hospital to recover health and cure disease.',
   BANK: 'Visit the Bank to deposit surplus cash for interest, or take a loan if short on funds.',
   WANDER: 'Stroll pleasantly around the Park or town streets to relax and observe the community.',

@@ -874,13 +874,13 @@ export class BehaviorSystem {
     private applyJevAction(agent: Agent, action: JevAction, agentIndex: number, allAgents: Agent[], time: number) {
         // Never let an asynchronous JEV response violate the health/charm objective.
         const finances = planFinances(agent, this.priceMultiplier, Math.floor(time / 60) % 24);
-        if (action.type === 'SHOP' && (!finances.canShop || agent.health < 55 || agent.hunger > 60 || agent.charm >= 100)) {
+        if (action.type === 'SHOP' && (!finances.canShop || agent.health < 40 || agent.hunger > 75 || agent.charm >= 100)) {
             if (this.localAiEnabled) {
                 agent.recordDecision({ type: 'LOCAL_RULE', reason: '健康或饥饿未达安全线，暂缓购物。', time, status: 'fallback' }, 'LOCAL_RULE');
             }
             return;
         }
-        if (action.type === 'LIBRARY' && (agent.health < 55 || agent.hunger > 60 || agent.charm >= 100)) {
+        if (action.type === 'LIBRARY' && (agent.health < 40 || agent.hunger > 75 || agent.charm >= 100)) {
             if (this.localAiEnabled) {
                 agent.recordDecision({ type: 'LOCAL_RULE', reason: '健康或饥饿未达安全线，暂缓低成本魅力活动。', time, status: 'fallback' }, 'LOCAL_RULE');
             }

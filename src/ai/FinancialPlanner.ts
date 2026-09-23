@@ -25,7 +25,7 @@ export interface FinancialPlan {
 export function planFinances(agent: Agent, priceMultiplier: number, hour: number): FinancialPlan {
   const foodCost = 0.05 * priceMultiplier;
   const treatmentCost = 0.2 * priceMultiplier;
-  const shoppingCost = Math.max(5, 0.5 * priceMultiplier);
+  const shoppingCost = Math.max(1.0, 0.25 * priceMultiplier);
   const liquidFunds = agent.cash + ((hour >= 9 && hour < 18) ? agent.bankBalance : 0);
   const totalWealth = agent.cash + agent.bankBalance;
   const foodReserve = foodCost * 3;

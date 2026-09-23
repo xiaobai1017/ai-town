@@ -200,9 +200,9 @@ export function buildJevContext(
   const hungerCeiling = 65;
   const hour = Math.floor(time / 60) % 24;
   const finances = planFinances(agent, priceMultiplier, hour);
-  const canPursueCharmSafely = agent.health >= 55 && agent.hunger <= 55 &&
+  const canPursueCharmSafely = agent.health >= 45 && agent.hunger <= 65 &&
     finances.canShop && agent.charm < 100;
-  const canReadSafely = agent.health >= 55 && agent.hunger <= 55 && agent.charm < 100;
+  const canReadSafely = agent.health >= 50 && agent.hunger <= 60 && agent.charm < 100;
 
   const isNight = hour >= 22 || hour < 7;
 
@@ -241,11 +241,27 @@ export function buildJevContext(
       candidates.push({ type: 'WORK', location: workLocation(agent) });
     }
 
-    // 饥饿感出现时提供就餐选项（优先考虑资金与偏好）
+    // 饥饿感出现时提供就餐选项（优先考虑资金、角色与天气）
     if (agent.hunger >= 20) {
-      // 雪天或雨天更倾向于去 Bakery 喝热饮取暖
-      const prefersBakery = weather === 'SNOWY' || agent.cash < (0.05 * priceMultiplier) || agent.bankBalance < 10;
-      candidates.push({ type: 'EAT', location: prefersBakery ? 'Bakery' : 'Restaurant' });
+      const foodCost = 0.05 * priceMultiplier;
+      const isShortOnCash = finances.liquidFunds < foodCost;
+      let eatTarget = 'Restaurant';
+
+      if (isShortOnCash) {
+        // 极度贫困时回家简餐
+        eatTarget = 'My House';
+      } else if (agent.role === 'Baker') {
+        // 面包师本人偏好自己的面包店
+        eatTarget = 'Bakery';
+      } else if (weather === 'SNOWY') {
+        // 下雪天偏好烘焙暖炉与热饮
+        eatTarget = 'Bakery';
+      } else {
+        // 正常情况下首选小镇餐厅享用丰盛正餐；轻度饥饿（20~35）时亦有小概率去面包店吃下午茶
+        eatTarget = (agent.hunger < 35 && Math.random() < 0.3) ? 'Bakery' : 'Restaurant';
+      }
+
+      candidates.push({ type: 'EAT', location: eatTarget });
     }
 
     // 资金充裕且基本需求满足时提供商场消费 (商业时段 9:00 ~ 21:00)
