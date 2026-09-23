@@ -6,16 +6,29 @@
 import { Agent, AgentState } from '../engine/Agent';
 import { World } from '../engine/World';
 import { planFinances } from './FinancialPlanner';
-import { callJev } from './jevDecisionCore';
+import { callJevBatch } from './jevDecisionCore';
 import { loadModelSettings } from '@/lib/modelSettings';
 
-/** 全局 JEV 请求错峰与限流调度队列，限制最大并发避免冲垮网络，支持仿真暂停时瞬间清空取消 */
-class JevRequestQueue {
-  private inFlight = 0;
-  private readonly maxConcurrent = 2;
-  private queue: Array<{ run: () => void; cancel: () => void }> = [];
-  private lastDispatchTime = 0;
+interface PendingJevRequest {
+  context: JevDecisionContext;
+  resolve: (action: JevAction | null) => void;
+}
+
+/**
+ * 全局 JEV 批处理请求队列。
+ * 当请求正在执行时，后续进入队列的所有小人决策请求会在下一次派发时合并为单次批量 JEV 请求发送，
+ * 彻底消除排队等待延迟并减少 API 请求频次。
+ * @author hubin
+ */
+class JevBatchQueue {
+  private inFlight = false;
+  private pendingQueue: PendingJevRequest[] = [];
+  private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private isPaused = false;
+  private lastDispatchTime = 0;
+  private readonly maxBatchSize = 8;
+  private readonly debounceMs = 60;
+  private readonly minIntervalMs = 250;
 
   setPaused(paused: boolean) {
     this.isPaused = paused;
@@ -25,58 +38,111 @@ class JevRequestQueue {
   }
 
   clear() {
-    const pending = [...this.queue];
-    this.queue = [];
-    pending.forEach(item => item.cancel());
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = null;
+    }
+    const pending = [...this.pendingQueue];
+    this.pendingQueue = [];
+    pending.forEach(item => item.resolve(null));
   }
 
-  async enqueue<T>(fn: () => Promise<T>): Promise<T | null> {
+  enqueue(context: JevDecisionContext): Promise<JevAction | null> {
     if (this.isPaused) {
-      return null;
+      return Promise.resolve(null);
     }
 
-    if (this.inFlight >= this.maxConcurrent) {
-      let cancelled = false;
-      await new Promise<void>(resolve => {
-        this.queue.push({
-          run: () => resolve(),
-          cancel: () => {
-            cancelled = true;
-            resolve();
-          }
-        });
-      });
-      if (cancelled || this.isPaused) {
-        return null;
+    return new Promise<JevAction | null>((resolve) => {
+      this.pendingQueue.push({ context, resolve });
+
+      // 若当前没有在途请求，启动短延时窗口聚合当前 tick 触发的小人
+      if (!this.inFlight) {
+        if (!this.debounceTimer) {
+          this.debounceTimer = setTimeout(() => {
+            this.debounceTimer = null;
+            void this.dispatchNextBatch();
+          }, this.debounceMs);
+        }
       }
-    }
-    this.inFlight++;
+      // 若当前已存在在途请求 (inFlight=true)，新请求直接留存在 pendingQueue 中，
+      // 等当前请求完成后的 finally 阶段会一次性取出全部排队请求合并发出。
+    });
+  }
 
-    // 每次请求间隔至少 250ms，防止瞬时并发网络风暴
+  private async dispatchNextBatch(): Promise<void> {
+    if (this.isPaused || this.inFlight || this.pendingQueue.length === 0) {
+      return;
+    }
+
     const now = Date.now();
-    const waitMs = Math.max(0, 250 - (now - this.lastDispatchTime));
+    const waitMs = Math.max(0, this.minIntervalMs - (now - this.lastDispatchTime));
     if (waitMs > 0) {
-      await new Promise(resolve => setTimeout(resolve, waitMs));
+      setTimeout(() => void this.dispatchNextBatch(), waitMs);
+      return;
     }
-    if (this.isPaused) {
-      this.inFlight--;
-      return null;
-    }
+
+    // 一次性取出当前队列中排队的所有请求（最多 maxBatchSize 个）
+    const batch = this.pendingQueue.splice(0, this.maxBatchSize);
+    if (batch.length === 0) return;
+
+    this.inFlight = true;
     this.lastDispatchTime = Date.now();
 
     try {
-      return await fn();
+      const contexts = batch.map(b => b.context);
+      const settings = loadModelSettings();
+      const timeoutSec = settings.jev.timeout && settings.jev.timeout > 0 ? settings.jev.timeout : 15;
+
+      let resultMap = new Map<string, JevAction | null>();
+
+      if (typeof window === 'undefined') {
+        // 服务端环境直接调用 callJevBatch
+        resultMap = await callJevBatch(contexts, settings.jev);
+      } else {
+        // 客户端环境通过 HTTP 接口批量调用
+        try {
+          const response = await fetch('/api/jev/decision', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contexts, jevConfig: settings.jev }),
+            signal: AbortSignal.timeout(timeoutSec * 1000 + 3000)
+          });
+          if (response.ok) {
+            const data = await response.json();
+            const rawResults = data?.results || {};
+            for (const [key, val] of Object.entries(rawResults)) {
+              resultMap.set(key, parseJevAction(val));
+            }
+          }
+        } catch (fetchErr) {
+          console.error('[JEV] fetch batch error:', fetchErr);
+        }
+      }
+
+      // 解包并分发给批次中的各个小人
+      for (const item of batch) {
+        const agentId = item.context.agent?.id;
+        const action = agentId ? (resultMap.get(agentId) ?? null) : null;
+        item.resolve(action);
+      }
+    } catch (err) {
+      console.error('[JEV] dispatchNextBatch error:', err);
+      for (const item of batch) {
+        item.resolve(null);
+      }
     } finally {
-      this.inFlight--;
-      if (this.queue.length > 0 && !this.isPaused) {
-        const next = this.queue.shift();
-        next?.run();
+      this.inFlight = false;
+      this.lastDispatchTime = Date.now();
+
+      // 如果队列中还有排队的请求，并且未暂停，立即触发下一次批次派发（将当前排队的合并派发）
+      if (this.pendingQueue.length > 0 && !this.isPaused) {
+        setTimeout(() => void this.dispatchNextBatch(), 0);
       }
     }
   }
 }
 
-const jevQueue = new JevRequestQueue();
+const jevQueue = new JevBatchQueue();
 
 export function setJevQueuePaused(paused: boolean) {
   jevQueue.setPaused(paused);
@@ -229,27 +295,5 @@ export function parseJevAction(value: unknown): JevAction | null {
 }
 
 export async function requestJevDecision(context: JevDecisionContext): Promise<JevAction | null> {
-  return jevQueue.enqueue(async () => {
-    const settings = loadModelSettings();
-    const timeoutSec = settings.jev.timeout && settings.jev.timeout > 0 ? settings.jev.timeout : 15;
-
-    // When running on the server (SimulationRuntime), call the shared core
-    // directly instead of fetching our own HTTP route (relative URLs don't
-    // resolve in Node). On the client, fall back to the HTTP route.
-    if (typeof window === 'undefined') {
-      return callJev(context, settings.jev);
-    }
-    try {
-      const response = await fetch('/api/jev/decision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ context, jevConfig: settings.jev }),
-        signal: AbortSignal.timeout(timeoutSec * 1000 + 3000)
-      });
-      if (!response.ok) return null;
-      return parseJevAction(await response.json());
-    } catch {
-      return null;
-    }
-  });
+  return jevQueue.enqueue(context);
 }

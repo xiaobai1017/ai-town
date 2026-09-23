@@ -101,14 +101,28 @@ function isTimeoutError(error: unknown): boolean {
     code.includes('timeout') || message.includes('timed out') || message.includes('timeout');
 }
 
-/** Returns null if JEV is not configured or the request fails. */
-export async function callJev(context: JevDecisionContext, overrideConfig?: Partial<JevConfig>): Promise<JevAction | null> {
+/**
+ * 批量执行 JEV 决策，单次 systemOne 请求聚合当前批次中所有小人的状态和问题
+ * @author hubin
+ */
+export async function callJevBatch(
+  contexts: JevDecisionContext[],
+  overrideConfig?: Partial<JevConfig>
+): Promise<Map<string, JevAction | null>> {
+  const resultMap = new Map<string, JevAction | null>();
+  if (!contexts || contexts.length === 0) return resultMap;
+
+  for (const ctx of contexts) {
+    if (ctx.agent?.id) {
+      resultMap.set(ctx.agent.id, null);
+    }
+  }
+
   const apiKey = overrideConfig?.apiKey?.trim() || envApiKey;
   const timeoutSec = overrideConfig?.timeout && overrideConfig.timeout > 0 ? overrideConfig.timeout : 15;
   const timeoutMs = timeoutSec * 1000;
 
   let activeClient = defaultClient;
-
   if (apiKey) {
     activeClient = getOrCreateClient(
       apiKey,
@@ -119,52 +133,105 @@ export async function callJev(context: JevDecisionContext, overrideConfig?: Part
   }
 
   if (!activeClient) {
-    if (typeof window === 'undefined') console.warn('[JEV] callJev invoked but client is null (API key not loaded)');
-    return null;
+    if (typeof window === 'undefined') console.warn('[JEV] callJevBatch invoked but client is null (API key not loaded)');
+    return resultMap;
   }
 
-  if (typeof window === 'undefined') console.log(`[JEV] calling systemOne for agent ${context.agent?.name} (candidates: ${context.candidates?.length})`);
+  const firstWorld = contexts[0]?.world;
+  const hour = firstWorld?.hour ?? 12;
+  const isNight = hour >= 22 || hour < 7;
+
+  const questions: Record<string, any> = {};
+  const agentCandidatesMap = new Map<string, Array<{ type?: string; location?: string }>>();
+
+  for (const ctx of contexts) {
+    const agent = ctx.agent;
+    if (!agent?.id) continue;
+    const candidates: Array<{ type?: string; location?: string }> = Array.isArray(ctx?.candidates) ? ctx.candidates : [];
+    agentCandidatesMap.set(agent.id, candidates);
+
+    const availableTypes = new Set<string>(
+      candidates.map(c => c.type).filter((t): t is string => Boolean(t))
+    );
+    if (availableTypes.size === 0) {
+      availableTypes.add('WAIT');
+    }
+    const criteria = Object.fromEntries(
+      [...availableTypes].map(type => [type, DESCRIPTIONS[type] || 'A safe available action.'])
+    );
+
+    const promptText = isNight
+      ? `It is currently late night in AI Town (${hour}:00). Resident ${agent.name} (${agent.role}) should rest or take essential care. Choose the best candidate action.`
+      : `Choose the best candidate action for resident ${agent.name} (${agent.role}) balancing health, hunger, financial security, and charm aspirations.`;
+
+    const qKey = `action_${agent.id}`;
+    questions[qKey] = choice(promptText, criteria);
+  }
+
+  if (Object.keys(questions).length === 0) {
+    return resultMap;
+  }
+
+  const state = {
+    world: firstWorld,
+    residents: contexts.map(ctx => ({
+      agent: ctx.agent,
+      objective: ctx.objective,
+      candidateActions: ctx.candidates?.map(c => c.type)
+    }))
+  };
+
+  if (typeof window === 'undefined') {
+    const names = contexts.map(c => c.agent?.name).join(', ');
+    console.log(`[JEV] calling systemOne batch for ${contexts.length} agents: [${names}]`);
+  }
 
   try {
-    const candidates: Array<{ type?: string; location?: string }> = Array.isArray(context?.candidates) ? context.candidates : [];
-    const availableTypes = new Set<string>(candidates
-      .map((candidate: { type?: string }) => candidate.type)
-      .filter((type): type is string => Boolean(type)));
-    const criteria = Object.fromEntries([...availableTypes].map(type => [type, DESCRIPTIONS[type] || 'A safe available action.']));
-
-    const hour = context?.world?.hour ?? 12;
-    const isNight = hour >= 22 || hour < 7;
-    const promptText = isNight
-      ? `It is currently late night in AI Town (${hour}:00). Residents naturally need to return home to sleep (SLEEP) to rest and recharge, unless urgent medical treatment is needed. Choose the best candidate action.`
-      : 'Choose the best candidate action for the resident balancing health, hunger, financial security, and charm aspirations.';
-
     const result = await activeClient.systemOne({
-      state: context as any as Record<string, any>,
-      questions: {
-        action: choice(promptText, criteria)
-      }
+      state: state as any,
+      questions
     });
-    const type = result.answers.action.choice;
-    if (!availableTypes.has(type)) return null;
-    const candidate = context?.candidates?.find((item: { type?: string }) => item.type === type);
-    const confidence = result?.answers?.action?.confidence;
-    return {
-      type: type as JevAction['type'],
-      location: candidate?.location,
-      reason: formatJevReason(type, candidate?.location, confidence, context?.agent)
-    };
+
+    const answers = result?.answers as Record<string, any> | undefined;
+    if (answers) {
+      for (const ctx of contexts) {
+        const agent = ctx.agent;
+        if (!agent?.id) continue;
+        const qKey = `action_${agent.id}`;
+        const answer = answers[qKey];
+        if (!answer) continue;
+        const chosenType = answer.choice;
+        const candidates = agentCandidatesMap.get(agent.id) ?? [];
+        const matchingCandidate = candidates.find(c => c.type === chosenType);
+        const confidence = answer.confidence;
+
+        if (chosenType) {
+          resultMap.set(agent.id, {
+            type: chosenType as JevAction['type'],
+            location: matchingCandidate?.location,
+            reason: formatJevReason(chosenType, matchingCandidate?.location, confidence, agent)
+          });
+        }
+      }
+    }
   } catch (error) {
-    // A timeout is an expected transient failure. The caller already has a
-    // deterministic local-rule fallback, so do not emit a noisy stack trace.
     if (isTimeoutError(error)) {
       if (typeof window === 'undefined') {
-        console.warn(`[JEV] decision timed out (${timeoutSec}s) for agent ${context.agent?.name}; using local fallback.`);
+        console.warn(`[JEV] batch decision timed out (${timeoutSec}s) for ${contexts.length} agents; using local fallback.`);
       }
     } else {
-      console.error('[JEV] decision failed:', error);
+      console.error('[JEV] batch decision failed:', error);
     }
-    return null;
   }
+
+  return resultMap;
+}
+
+/** Returns null if JEV is not configured or the request fails. */
+export async function callJev(context: JevDecisionContext, overrideConfig?: Partial<JevConfig>): Promise<JevAction | null> {
+  if (!context?.agent?.id) return null;
+  const resultMap = await callJevBatch([context], overrideConfig);
+  return resultMap.get(context.agent.id) ?? null;
 }
 
 export function isJevConfigured(overrideConfig?: Partial<JevConfig>): boolean {
