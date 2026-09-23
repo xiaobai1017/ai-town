@@ -113,7 +113,7 @@ export const zh = {
     noFriends: '暂无亲密关系',
     finHistory: '收支流水记录',
     charmHistory: '魅力成长记录',
-    decisionHistory: '决策日志记录',
+    decisionHistory: '决策日志 (最新 50 条)',
     viewDecisionHistory: '决策日志',
     hideDecisionHistory: '收起日志',
     noDecisionHistory: '暂无决策日志记录',

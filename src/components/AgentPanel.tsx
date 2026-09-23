@@ -109,8 +109,8 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                                 <h3 className="text-[10px] uppercase font-black text-indigo-400 tracking-widest">
                                     {t('agent.decisionHistory')}
                                 </h3>
-                                <span className="text-[10px] text-slate-500">
-                                    {agent.decisionHistory?.length || 0}
+                                <span className="text-[10px] text-slate-400 font-semibold">
+                                    {agent.decisionHistory?.length || 0} / 50
                                 </span>
                             </div>
 

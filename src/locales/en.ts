@@ -113,7 +113,7 @@ export const en = {
     noFriends: 'No close relationships yet',
     finHistory: 'Financial History',
     charmHistory: 'Charm History',
-    decisionHistory: 'Decision History',
+    decisionHistory: 'Decision History (Latest 50)',
     viewDecisionHistory: 'Decision Logs',
     hideDecisionHistory: 'Hide Logs',
     noDecisionHistory: 'No decision logs yet',
