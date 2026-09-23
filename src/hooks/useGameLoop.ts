@@ -22,6 +22,7 @@ export interface GameState {
     wageLevel: number;
     riskLevel: number;
     jevEnabled: boolean;
+    localAiEnabled: boolean;
     jevCooldown: number; // Game minutes between JEV decisions per resident
     isReplaying: boolean;
 }
@@ -36,8 +37,9 @@ export function useGameLoop() {
         dialogueLog: [],
         priceLevel: 1.0,
         wageLevel: 1.0,
-        riskLevel: 1.0
-        ,jevEnabled: false,
+        riskLevel: 1.0,
+        jevEnabled: false,
+        localAiEnabled: true,
         jevCooldown: 30,
         isReplaying: false
     });
@@ -111,8 +113,9 @@ export function useGameLoop() {
             dialogueLog: [],
             priceLevel: 1.0,
             wageLevel: 1.0,
-            riskLevel: 1.0
-            ,jevEnabled: false,
+            riskLevel: 1.0,
+            jevEnabled: false,
+            localAiEnabled: true,
             jevCooldown: 30,
             isReplaying: false
         };
@@ -135,7 +138,7 @@ export function useGameLoop() {
                     setGameState({ ...stateRef.current });
                 } else {
                     const frame = restoreFrame(replay.frames[replay.index]);
-                    const nextState = { ...frame, isRunning: false, isReplaying: true, jevCooldown: stateRef.current.jevCooldown };
+                    const nextState = { ...frame, isRunning: false, isReplaying: true, jevCooldown: stateRef.current.jevCooldown, localAiEnabled: frame.localAiEnabled ?? stateRef.current.localAiEnabled ?? true };
                     stateRef.current = nextState;
                     setGameState(nextState);
                     lastTimeRef.current = timestamp;
@@ -244,7 +247,7 @@ export function useGameLoop() {
         if (!record) return;
         replayRef.current = { frames: record.frames, index: 0 };
         const frame = restoreFrame(record.frames[0]);
-        const nextState = { ...frame, isRunning: false, isReplaying: true, jevCooldown: stateRef.current.jevCooldown };
+        const nextState = { ...frame, isRunning: false, isReplaying: true, jevCooldown: stateRef.current.jevCooldown, localAiEnabled: frame.localAiEnabled ?? stateRef.current.localAiEnabled ?? true };
         stateRef.current = nextState;
         setGameState(nextState);
         lastTimeRef.current = performance.now();
@@ -331,10 +334,45 @@ export function useGameLoop() {
     };
 
     const setJevEnabled = (enabled: boolean) => {
-        if (serverMode) { void sendServerCommand('jev', enabled); return; }
         stateRef.current.jevEnabled = enabled;
         behaviorSystemRef.current?.setJevEnabled(enabled);
-        setGameState(prev => ({ ...prev, jevEnabled: enabled }));
+        if (serverMode) void sendServerCommand('jev', enabled);
+
+        // 如果关闭 JEV 且当前本地决策也是关闭状态，为保证城镇有决策驱动，自动开启本地决策
+        let nextLocalAi = stateRef.current.localAiEnabled;
+        if (!enabled && !nextLocalAi) {
+            nextLocalAi = true;
+            stateRef.current.localAiEnabled = true;
+            behaviorSystemRef.current?.setLocalAiEnabled(true);
+            if (serverMode) void sendServerCommand('localAi', true);
+        }
+
+        setGameState(prev => ({
+            ...prev,
+            jevEnabled: enabled,
+            localAiEnabled: nextLocalAi
+        }));
+    };
+
+    const setLocalAiEnabled = (enabled: boolean) => {
+        stateRef.current.localAiEnabled = enabled;
+        behaviorSystemRef.current?.setLocalAiEnabled(enabled);
+        if (serverMode) void sendServerCommand('localAi', enabled);
+
+        // 关闭本地AI决策后，自动开启 JEV 决策开关，确保由 JEV 提供决策
+        let nextJev = stateRef.current.jevEnabled;
+        if (!enabled) {
+            nextJev = true;
+            stateRef.current.jevEnabled = true;
+            behaviorSystemRef.current?.setJevEnabled(true);
+            if (serverMode) void sendServerCommand('jev', true);
+        }
+
+        setGameState(prev => ({
+            ...prev,
+            localAiEnabled: enabled,
+            jevEnabled: nextJev
+        }));
     };
 
     const setJevCooldown = (minutes: number) => {
@@ -383,6 +421,7 @@ export function useGameLoop() {
             wageLevel: 1.0,
             riskLevel: 1.0,
             jevEnabled: stateRef.current.jevEnabled,
+            localAiEnabled: stateRef.current.localAiEnabled,
             jevCooldown: stateRef.current.jevCooldown,
             isReplaying: false
         };
@@ -410,6 +449,7 @@ export function useGameLoop() {
         setWageLevel,
         setRiskLevel,
         setJevEnabled,
+        setLocalAiEnabled,
         setJevCooldown,
         replayAvailable,
         startReplay,

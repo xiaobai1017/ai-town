@@ -15,9 +15,11 @@ export class BehaviorSystem {
     wageMultiplier: number = 1.0;
     riskMultiplier: number = 1.0; // Control probability of accidents/illness
     private jevEnabled = false;
+    private localAiEnabled = true;
     private jevPending = new Set<string>();
     private jevLastDecision = new Map<string, number>();
     private jevFailures = new Map<string, number>();
+    private localLastDecision = new Map<string, number>();
     /** Game minutes between JEV decisions per resident. */
     private jevCooldownMinutes = 30;
 
@@ -33,8 +35,16 @@ export class BehaviorSystem {
 
     setJevEnabled(enabled: boolean) { this.jevEnabled = enabled; }
 
+    setLocalAiEnabled(enabled: boolean) { this.localAiEnabled = enabled; }
+
     setJevCooldownMinutes(minutes: number) {
         this.jevCooldownMinutes = Math.max(1, minutes);
+    }
+
+    getLocalCooldownMinutes(): number {
+        // 本地规则常规决策频次设定为 JEV 频次的 1/3（即冷却时间为 JEV 的 3 倍）
+        // 默认 JEV 30 分钟时，本地规则决策冷却为 90 分钟
+        return this.jevEnabled ? Math.max(60, this.jevCooldownMinutes * 3) : 60;
     }
 
     update(agents: Agent[], time: number) {
@@ -438,17 +448,29 @@ export class BehaviorSystem {
         });
     }
 
-    private recordLocalDecision(agent: Agent, type: string, location: string | undefined, reason: string, time: number) {
+    private canMakeLocalDecision(agent: Agent, time: number, isEmergency: boolean = false): boolean {
+        if (!this.localAiEnabled) return false;
+        if (isEmergency) return true;
+        const cooldown = this.getLocalCooldownMinutes();
+        const lastTime = this.localLastDecision.get(agent.id) ?? -Infinity;
+        return (time - lastTime) >= cooldown;
+    }
+
+    private recordLocalDecision(agent: Agent, type: string, location: string | undefined, reason: string, time: number, isEmergency: boolean = false) {
+        if (!this.localAiEnabled) return;
         if (agent.jevIntent &&
             agent.jevIntent.type === type &&
             agent.jevIntent.location === location &&
             (time - agent.jevIntent.time) < 30) {
             return;
         }
+        if (!isEmergency) {
+            this.localLastDecision.set(agent.id, time);
+        }
         agent.recordDecision({
             type,
             location,
-            reason,
+            reason: isEmergency ? `[紧急自救] ${reason}` : reason,
             time,
             status: 'planned'
         }, 'LOCAL_RULE');
@@ -471,12 +493,61 @@ export class BehaviorSystem {
             return;
         }
 
-        const failures = this.jevFailures.get(agent.id) ?? 0;
-        // 失败退避惩罚：每次连续失败额外增加 15 游戏分钟冷却（上限额外 60 分钟），防止失败小人死循环高频轰炸
-        const effectiveCooldown = this.jevCooldownMinutes + Math.min(60, failures * 15);
+        // 1. 紧急生命线判定：仅在启用本地决策且危及生命时（健康 < 45 或 饥饿 > 75），本地紧急自救规则立即介入防止死亡
+        const isHungerEmergency = agent.hunger > 75;
+        const isHealthEmergency = agent.health < 45;
 
-        // 放宽 JEV 触发门槛：在健康 >= 50、饥饿 <= 70 的绝大部分日常状态下均允许 JEV AI 自主决策
-        if (this.jevEnabled && agent.state === 'IDLE' && agent.health >= 50 && agent.hunger <= 70 &&
+        if (this.localAiEnabled && isHungerEmergency && agent.state !== 'SLEEPING') {
+            const restaurantCost = 0.05 * this.priceMultiplier;
+            const bakeryCost = 0.03 * this.priceMultiplier;
+            const homeCost = 0.01 * this.priceMultiplier;
+
+            const foodLocation = this.getAvailableFoodLocation(agent, allAgents, finances.liquidFunds, restaurantCost, bakeryCost, homeCost);
+            if (foodLocation) {
+                this.recordLocalDecision(agent, 'EAT', foodLocation, `严重饥饿濒临绝境 (饥饿度 ${agent.hunger.toFixed(0)})，紧急前往 ${foodLocation} 用餐。`, time, true);
+                this.ensureAtLocation(agent, agentIndex, foodLocation, 'EATING', allAgents);
+                return;
+            } else if (isBankOpen && (agent.bankBalance >= (5 * this.priceMultiplier) || agent.loanBalance < 200)) {
+                agent.state = 'BANKING';
+                agent.conversation = "I'm hungry but broke. Need a loan!";
+                agent.conversationTTL = 50;
+                this.recordLocalDecision(agent, 'BANK', 'Bank', `极度饥饿且身无分文，紧急前往银行申请贷款购买食物。`, time, true);
+                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
+                return;
+            }
+        }
+
+        if (this.localAiEnabled && isHealthEmergency && agent.state !== 'SLEEPING') {
+            const hospitalCost = 0.2 * this.priceMultiplier;
+            if (finances.liquidFunds >= hospitalCost) {
+                this.recordLocalDecision(agent, 'TREAT', 'Hospital', `生命垂危 (健康值 ${agent.health.toFixed(0)})，紧急前往医院急救。`, time, true);
+                this.ensureAtLocation(agent, agentIndex, 'Hospital', 'TREATING', allAgents);
+                return;
+            }
+            const restaurantCost = 0.05 * this.priceMultiplier;
+            if (finances.liquidFunds >= restaurantCost) {
+                this.recordLocalDecision(agent, 'EAT', 'Restaurant', `健康极度虚弱且就医资金紧张，紧急就餐补充体力。`, time, true);
+                this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING', allAgents);
+                return;
+            }
+            if (isBankOpen && (agent.bankBalance >= 20 || agent.loanBalance < 200)) {
+                agent.state = 'BANKING';
+                agent.conversation = "I need money for medical treatment. To the bank!";
+                agent.conversationTTL = 50;
+                this.recordLocalDecision(agent, 'BANK', 'Bank', `急需抢救医疗资金，前往银行取款或贷款。`, time, true);
+                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
+                return;
+            }
+        }
+
+        // 2. JEV 核心智能决策入口：
+        // 若启用本地决策，日常生理区间（健康 >= 45 且 饥饿 <= 75）由 JEV 决策；
+        // 若关闭本地决策，所有决策均只由 JEV 提供（解除健康与饥饿安全区间限制，全部交由 JEV 决策）
+        const failures = this.jevFailures.get(agent.id) ?? 0;
+        const effectiveCooldown = this.jevCooldownMinutes + Math.min(60, failures * 15);
+        const jevHealthHungerCondition = this.localAiEnabled ? (agent.health >= 45 && agent.hunger <= 75) : true;
+
+        if (this.jevEnabled && agent.state === 'IDLE' && jevHealthHungerCondition &&
             !this.jevPending.has(agent.id) &&
             (this.jevLastDecision.get(agent.id) ?? -Infinity) <= time - effectiveCooldown) {
             if (typeof window === 'undefined') console.log(`[JEV] trigger for ${agent.name} (state=${agent.state} hp=${agent.health} hunger=${agent.hunger})`);
@@ -492,8 +563,9 @@ export class BehaviorSystem {
                 } else {
                     const nextFailures = (this.jevFailures.get(agent.id) ?? 0) + 1;
                     this.jevFailures.set(agent.id, nextFailures);
-                    agent.recordDecision({ type: 'LOCAL_RULE', reason: 'JEV 暂无可用结果，转由本地规则接管。', time, status: 'fallback' }, 'LOCAL_RULE');
-                    // 防呆机制：如果小人依然在 IDLE，随机自主散步，避免小人原地呆立并脱离 IDLE 状态
+                    if (this.localAiEnabled) {
+                        agent.recordDecision({ type: 'LOCAL_RULE', reason: 'JEV 暂无可用结果，转由本地规则接管。', time, status: 'fallback' }, 'LOCAL_RULE');
+                    }
                     if (agent.state === 'IDLE' && Math.random() < 0.6) {
                         this.wander(agent);
                     }
@@ -502,6 +574,32 @@ export class BehaviorSystem {
             return;
         }
 
+        // 3. 本地常规决策频次控制与开关检查
+        // 若关闭本地AI，则不执行任何本地常规决策，小人行动只由 JEV 驱动
+        const canLocalDecide = this.canMakeLocalDecision(agent, time, false);
+
+        if (!canLocalDecide) {
+            // 如果处于非紧急状态且在本地决策冷却期内，或本地AI已关闭（此时只由 JEV 提供决策）：
+            if (agent.state === 'MOVING' || agent.state === 'WORKING' || agent.state === 'EATING' || 
+                agent.state === 'SHOPPING' || agent.state === 'READING' || agent.state === 'TREATING' || agent.state === 'BANKING') {
+                return; // 保持正在进行的行为
+            }
+            if (this.localAiEnabled && (hour >= 22 || hour < 8)) {
+                // 夜间静默就寝（不重复写决策日志）
+                if (agent.state !== 'SLEEPING') {
+                    this.ensureAtLocation(agent, agentIndex, 'My House', 'SLEEPING', allAgents);
+                }
+                return;
+            }
+            if (agent.state === 'IDLE') {
+                if (Math.random() < 0.05) this.wander(agent);
+                return;
+            }
+            return;
+        }
+
+        // 4. 允许生成常规本地决策（已脱离 90 分钟冷却期）
+        // 银行处理
         if (agent.state === 'BANKING') {
             if (!isBankOpen) {
                 agent.state = 'IDLE';
@@ -513,70 +611,41 @@ export class BehaviorSystem {
             }
         }
 
-        // Low chance to commit crime if not police
+        // 轻微犯罪
         if (agent.role !== 'Police' && agent.state === 'IDLE' && Math.random() < 0.001) {
             agent.state = 'CRIMINAL';
             agent.conversation = "Time for some mischief...";
             agent.conversationTTL = 50;
         }
 
-        // Starving logic: HIGHEST PRIORITY - always prioritize eating when hungry (Interrupts moving)
-        const starvationThreshold = totalWealth >= (1.0 * this.priceMultiplier) ? 20 : 70;
-        if (agent.hunger > starvationThreshold && agent.state !== 'SLEEPING') {
+        // 中度饥饿（hunger > 50）：按常理前往就餐
+        if (agent.hunger > 50 && agent.state !== 'SLEEPING') {
             const restaurantCost = 0.05 * this.priceMultiplier;
             const bakeryCost = 0.03 * this.priceMultiplier;
             const homeCost = 0.01 * this.priceMultiplier;
-
             const foodLocation = this.getAvailableFoodLocation(agent, allAgents, finances.liquidFunds, restaurantCost, bakeryCost, homeCost);
             if (foodLocation) {
                 this.recordLocalDecision(agent, 'EAT', foodLocation, `感到腹中饥饿 (饥饿度 ${agent.hunger.toFixed(0)})，前往 ${foodLocation} 用餐补充体力。`, time);
                 this.ensureAtLocation(agent, agentIndex, foodLocation, 'EATING', allAgents);
                 return;
-            } else if (isBankOpen && (agent.bankBalance >= (5 * this.priceMultiplier) || agent.loanBalance < 200)) {
-                // Last resort: If too poor for any food, MUST go to bank for a loan
-                agent.state = 'BANKING';
-                agent.conversation = "I'm hungry but broke. Need a loan!";
-                agent.conversationTTL = 50;
-                this.recordLocalDecision(agent, 'BANK', 'Bank', `饥肠辘辘但身无分文，前往银行申请紧急贷款以购买食物。`, time);
-                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
-                return;
             }
         }
 
-        // Health Priority Logic: If health is low, prioritize recovery over work/leisure
-        if (agent.health < 70 && agent.state !== 'SLEEPING') {
+        // 中度健康欠佳（health < 65）：按常理就医
+        if (agent.health < 65 && agent.state !== 'SLEEPING') {
             const hospitalCost = 0.2 * this.priceMultiplier;
-            // Priority 1: Hospital (Fastest recovery)
             if (finances.liquidFunds >= hospitalCost) {
                 this.recordLocalDecision(agent, 'TREAT', 'Hospital', `身体不适健康偏低 (健康值 ${agent.health.toFixed(0)})，前往医院接受医生治疗。`, time);
                 this.ensureAtLocation(agent, agentIndex, 'Hospital', 'TREATING', allAgents);
                 return;
             }
-            // Priority 2: Eating (Moderate recovery + prevents decay)
-            const restaurantCost = 0.05 * this.priceMultiplier;
-            if (finances.liquidFunds >= restaurantCost) {
-                this.recordLocalDecision(agent, 'EAT', 'Restaurant', `健康欠佳且资金紧张，前往餐厅用餐补充营养以求缓慢恢复。`, time);
-                this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING', allAgents);
-                return;
-            }
-
-            // Priority 3: Bank (Get money or loan for health) - MUST go if too poor for care
-            if (isBankOpen && (agent.bankBalance >= 20 || agent.loanBalance < 200)) {
-                agent.state = 'BANKING';
-                agent.conversation = "I need money for medical treatment. To the bank!";
-                agent.conversationTTL = 50;
-                this.recordLocalDecision(agent, 'BANK', 'Bank', `急需看病医疗资金，前往银行取款或申请贷款。`, time);
-                this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
-                return;
-            }
         }
 
-        // Charm system: Wealthy agents prioritize shopping to increase charm
+        // 魅力购物
         const isWealthy = finances.disposableFunds >= 100 * this.priceMultiplier;
         const hasBasicNeedsMet = agent.hunger < 30 && agent.health > 80;
         const isCharmSeeker = finances.canShop && isWealthy && hasBasicNeedsMet && agent.charm < 100;
-        
-        if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < 0.1) {
+        if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < 0.2) {
             agent.state = 'SHOPPING';
             agent.conversation = "Time to shop and increase my charm!";
             agent.conversationTTL = 50;
@@ -585,12 +654,10 @@ export class BehaviorSystem {
             return;
         }
 
-        // Financial Management: deposit surplus cash whenever the safety rules allow it.
-        const depositChance = 1;
+        // 银行存款
         const depositThreshold = isWealthy ? 50 : 100;
-
         if (isBankOpen && finances.shouldBank && agent.cash >= depositThreshold && agent.hunger < 20 && agent.health > 90 &&
-            Math.random() < depositChance && agent.state !== 'WORKING' && agent.state !== 'SLEEPING') {
+            agent.state !== 'WORKING' && agent.state !== 'SLEEPING') {
             agent.state = 'BANKING';
             agent.conversation = isWealthy ? "Need to manage my growing capital." : "Better deposit this extra cash.";
             agent.conversationTTL = 50;
@@ -599,29 +666,20 @@ export class BehaviorSystem {
             return;
         }
 
-        // Low Priority check: If already moving to a routine destination, don't interrupt UNLESS starving
-        const criticalHunger = totalWealth >= (1.0 * this.priceMultiplier) ? 30 : 80;
-        if (agent.state === 'MOVING' && agent.hunger < criticalHunger) return;
-
+        // 日常日程计划：睡觉、上班、午餐、下午工作、晚间休闲
         if (hour >= 22 || hour < 8) {
-            // SLEEP TIME
             if (agent.state !== 'SLEEPING') {
                 this.recordLocalDecision(agent, 'SLEEP', 'My House', `夜幕深沉，返回家中就寝安歇。`, time);
                 this.ensureAtLocation(agent, agentIndex, 'My House', 'SLEEPING', allAgents);
             }
         } else if (hour >= 8 && hour < 12) {
-            // WORK TIME
             if (agent.state !== 'WORKING') {
                 const workLoc = this.getWorkLocation(agent);
                 this.recordLocalDecision(agent, 'WORK', workLoc, `上午工作时间已到，前往 ${workLoc} 履行职责。`, time);
                 this.ensureAtLocation(agent, agentIndex, workLoc, 'WORKING', allAgents);
             }
         } else if (hour >= 12 && hour < 13) {
-            // LUNCH - staggered start based on index (up to 15 mins)
-            const minuteOffset = (agentIndex * 3) % 15;
-            const currentMinute = time % 60;
-
-            if (currentMinute >= minuteOffset && agent.state !== 'IDLE' && agent.state !== 'EATING') {
+            if (agent.state !== 'IDLE' && agent.state !== 'EATING') {
                 const restaurantCost = 0.05 * this.priceMultiplier;
                 const bakeryCost = 0.03 * this.priceMultiplier;
                 const homeCost = 0.01 * this.priceMultiplier;
@@ -630,14 +688,12 @@ export class BehaviorSystem {
                 this.ensureAtLocation(agent, agentIndex, lunchLocation, 'EATING', allAgents);
             }
         } else if (hour >= 13 && hour < 17) {
-            // WORK TIME (AFTERNOON)
             if (agent.state !== 'WORKING') {
                 const workLoc = this.getWorkLocation(agent);
                 this.recordLocalDecision(agent, 'WORK', workLoc, `下午工作时段，前往 ${workLoc} 坚守岗位努力工作。`, time);
                 this.ensureAtLocation(agent, agentIndex, workLoc, 'WORKING', allAgents);
             }
         } else if (hour >= 17 && hour < 22) {
-            // LEISURE
             if (agent.state !== 'IDLE' && agent.state !== 'SHOPPING' && agent.state !== 'READING') {
                 const loc = this.getLeisureLocation(agentIndex, agent);
                 const desState = loc === 'Mall' ? 'SHOPPING' : loc === 'Library' ? 'READING' : 'IDLE';
@@ -647,7 +703,6 @@ export class BehaviorSystem {
                 this.ensureAtLocation(agent, agentIndex, loc, desState, allAgents);
             }
         } else {
-            // FREE TIME (Catch-all for remaining hours, e.g., 22-23, 0-7 if not sleeping)
             if (agent.state !== 'IDLE' && agent.state !== 'TALKING' && agent.state !== 'EATING' && agent.state !== 'SHOPPING' && agent.state !== 'READING') {
                 const loc = this.getLeisureLocation(agentIndex + 1, agent);
                 this.recordLocalDecision(agent, 'WANDER', loc, `空闲时光，前往 ${loc} 随意走走。`, time);
@@ -663,11 +718,15 @@ export class BehaviorSystem {
         // Never let an asynchronous JEV response violate the health/charm objective.
         const finances = planFinances(agent, this.priceMultiplier, Math.floor(time / 60) % 24);
         if (action.type === 'SHOP' && (!finances.canShop || agent.health < 55 || agent.hunger > 60 || agent.charm >= 100)) {
-            agent.recordDecision({ type: 'LOCAL_RULE', reason: '健康或饥饿未达安全线，暂缓购物。', time, status: 'fallback' }, 'LOCAL_RULE');
+            if (this.localAiEnabled) {
+                agent.recordDecision({ type: 'LOCAL_RULE', reason: '健康或饥饿未达安全线，暂缓购物。', time, status: 'fallback' }, 'LOCAL_RULE');
+            }
             return;
         }
         if (action.type === 'LIBRARY' && (agent.health < 55 || agent.hunger > 60 || agent.charm >= 100)) {
-            agent.recordDecision({ type: 'LOCAL_RULE', reason: '健康或饥饿未达安全线，暂缓低成本魅力活动。', time, status: 'fallback' }, 'LOCAL_RULE');
+            if (this.localAiEnabled) {
+                agent.recordDecision({ type: 'LOCAL_RULE', reason: '健康或饥饿未达安全线，暂缓低成本魅力活动。', time, status: 'fallback' }, 'LOCAL_RULE');
+            }
             return;
         }
         agent.recordDecision({ type: action.type, location: action.location, reason: action.reason, time, status: 'planned' }, 'JEV');
@@ -695,7 +754,9 @@ export class BehaviorSystem {
                 ? requested
                 : this.getAvailableFoodLocation(agent, allAgents, finances.liquidFunds, 0.05 * this.priceMultiplier, 0.03 * this.priceMultiplier, 0.01 * this.priceMultiplier);
             if (!food) {
-                agent.recordDecision({ type: 'LOCAL_RULE', reason: '餐厅和面包房暂时拥挤，等待可用座位。', time, status: 'fallback' }, 'LOCAL_RULE');
+                if (this.localAiEnabled) {
+                    agent.recordDecision({ type: 'LOCAL_RULE', reason: '餐厅和面包房暂时拥挤，等待可用座位。', time, status: 'fallback' }, 'LOCAL_RULE');
+                }
                 return;
             }
             destination = [food, 'EATING'];
@@ -704,7 +765,9 @@ export class BehaviorSystem {
         this.ensureAtLocation(agent, agentIndex, destination[0], destination[1], allAgents);
         if (agent.state === 'IDLE' && !this.isAt(agent, this.world.locations.find(location => location.name === destination[0])!.entry)) {
             // Path creation failed; keep the decision visible but allow a later retry.
-            agent.recordDecision({ ...(agent.jevIntent || { type: 'LOCAL_RULE', time }), reason: `${action.reason || ''} 正在重新规划路线。`, status: 'fallback' }, 'LOCAL_RULE');
+            if (this.localAiEnabled) {
+                agent.recordDecision({ ...(agent.jevIntent || { type: 'LOCAL_RULE', time }), reason: `${action.reason || ''} 正在重新规划路线。`, status: 'fallback' }, 'LOCAL_RULE');
+            }
         }
         if (action.reason) {
             agent.conversation = action.reason;

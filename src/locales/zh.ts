@@ -26,6 +26,8 @@ export const zh = {
     removeResident: '移除居民',
     jevAi: 'JEV 智能',
     jevAiTip: '启用 JEV 进行居民常规行为决策',
+    localAi: '本地决策',
+    localAiTip: '启用本地规则引擎进行居民日常决策（关闭后将只由 JEV 提供决策）',
     jevInterval: 'JEV 间隔',
     jevIntervalTip: '每位居民 JEV 决策冷却时间（游戏分钟）',
     wages: '工资水平',

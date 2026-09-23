@@ -20,7 +20,7 @@ import { useI18n } from "@/lib/i18n";
 
 export default function Home() {
   const { language, setLanguage, t } = useI18n();
-  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, setJevCooldown, replayAvailable, startReplay, stopReplay, restartSimulation } = useGameLoop();
+  const { gameState, togglePause, setSpeed, speed, addAgent, removeAgent, setPriceLevel, setWageLevel, setRiskLevel, setJevEnabled, setLocalAiEnabled, setJevCooldown, replayAvailable, startReplay, stopReplay, restartSimulation } = useGameLoop();
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const [selectedLocation, setSelectedLocation] = useState<TownLocation | null>(null);
   const [historyPair, setHistoryPair] = useState<[Agent, Agent] | null>(null);
@@ -154,11 +154,15 @@ export default function Home() {
             </div>
           </div>
 
-          {/* JEV 智能与经济参数调节 */}
+          {/* JEV 智能、本地决策与经济参数调节 */}
           <div className="flex items-center gap-2.5 bg-slate-100 p-1 rounded-lg">
             <label className="flex items-center gap-1.5 px-2 border-r border-slate-200 text-xs font-bold text-indigo-700 cursor-pointer" title={t('header.jevAiTip')}>
               <input type="checkbox" checked={gameState.jevEnabled} onChange={(event) => setJevEnabled(event.target.checked)} className="cursor-pointer rounded text-indigo-600" />
               {t('header.jevAi')}
+            </label>
+            <label className="flex items-center gap-1.5 px-2 border-r border-slate-200 text-xs font-bold text-slate-700 cursor-pointer" title={t('header.localAiTip')}>
+              <input type="checkbox" checked={gameState.localAiEnabled} onChange={(event) => setLocalAiEnabled(event.target.checked)} className="cursor-pointer rounded text-indigo-600" />
+              {t('header.localAi')}
             </label>
             <div className="flex items-center gap-1 px-1.5 border-r border-slate-200" title={t('header.jevIntervalTip')}>
               <div className="flex flex-col leading-tight">

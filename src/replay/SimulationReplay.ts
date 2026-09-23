@@ -1,3 +1,8 @@
+/**
+ * 城镇仿真回放系统
+ * @author hubin
+ */
+
 import { Agent } from '@/engine/Agent';
 import { World } from '@/engine/World';
 import type { DialoguePacket } from '@/ai/DialogueSystem';
@@ -14,6 +19,7 @@ export interface ReplayFrame {
   wageLevel: number;
   riskLevel: number;
   jevEnabled: boolean;
+  localAiEnabled?: boolean;
 }
 
 export interface ReplayRecord {

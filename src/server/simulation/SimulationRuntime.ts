@@ -21,7 +21,7 @@ export class SimulationRuntime {
     const { world, agents } = initializeWorld();
     this.behavior = new BehaviorSystem(world);
     this.dialogue = new DialogueSystem();
-    this.state = { world, agents, time: 480, isRunning: false, dialogueLog: [], priceLevel: 1, wageLevel: 1, riskLevel: 1, jevEnabled: false, jevCooldown: 30, isReplaying: false };
+    this.state = { world, agents, time: 480, isRunning: false, dialogueLog: [], priceLevel: 1, wageLevel: 1, riskLevel: 1, jevEnabled: false, localAiEnabled: true, jevCooldown: 30, isReplaying: false };
     this.timer = setInterval(() => this.step(), 100);
   }
 
@@ -42,6 +42,18 @@ export class SimulationRuntime {
     if (command.type === 'jev' && typeof command.value === 'boolean') {
       this.state.jevEnabled = command.value;
       this.behavior.setJevEnabled(command.value);
+      if (!command.value && !this.state.localAiEnabled) {
+        this.state.localAiEnabled = true;
+        this.behavior.setLocalAiEnabled(true);
+      }
+    }
+    if (command.type === 'localAi' && typeof command.value === 'boolean') {
+      this.state.localAiEnabled = command.value;
+      this.behavior.setLocalAiEnabled(command.value);
+      if (!command.value) {
+        this.state.jevEnabled = true;
+        this.behavior.setJevEnabled(true);
+      }
     }
     if (command.type === 'jevCooldown' && typeof command.value === 'number') {
       this.state.jevCooldown = Math.max(1, Math.min(120, command.value));
@@ -67,6 +79,7 @@ export class SimulationRuntime {
         wageLevel: 1,
         riskLevel: 1,
         jevEnabled: this.state.jevEnabled,
+        localAiEnabled: this.state.localAiEnabled ?? true,
         jevCooldown: this.state.jevCooldown,
         isReplaying: false
       };

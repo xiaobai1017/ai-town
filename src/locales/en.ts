@@ -26,6 +26,8 @@ export const en = {
     removeResident: 'Remove resident',
     jevAi: 'JEV AI',
     jevAiTip: 'Use JEV for ordinary resident decisions',
+    localAi: 'Local AI',
+    localAiTip: 'Enable local rule engine for resident decisions (if disabled, only JEV provides decisions)',
     jevInterval: 'JEV Interval',
     jevIntervalTip: 'JEV decision cooldown per resident (game minutes)',
     wages: 'Wages',
