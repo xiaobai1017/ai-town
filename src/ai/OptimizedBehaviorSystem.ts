@@ -1,3 +1,8 @@
+/**
+ * 优化版行为系统模块
+ * @author hubin
+ */
+
 import { OptimizedAgent, AgentState } from '../engine/OptimizedAgent';
 import { CompatibleOptimizedWorld as OptimizedWorld, Location, Coordinate } from '../engine/CompatibleOptimizedWorld';
 
@@ -665,7 +670,11 @@ export class OptimizedBehaviorSystem {
         if (agent.role === 'Baker') return 'Bakery';
         if (agent.role === 'Librarian') return 'Library';
         if (agent.role === 'Police') return 'Police Station';
-        return 'Library';
+        if (agent.role === 'Doctor') return 'Hospital';
+        if (agent.role === 'Gardener') return 'Park';
+        if (agent.role === 'Artist') return 'Park';
+        if (agent.role === 'Mayor') return 'Library';
+        return 'Park';
     }
 
     private _getIncome(agent: OptimizedAgent): number {

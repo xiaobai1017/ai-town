@@ -151,7 +151,11 @@ function workLocation(agent: Agent) {
   if (agent.role === 'Baker') return 'Bakery';
   if (agent.role === 'Librarian') return 'Library';
   if (agent.role === 'Police') return 'Police Station';
-  return 'Library';
+  if (agent.role === 'Doctor') return 'Hospital';
+  if (agent.role === 'Gardener') return 'Park';
+  if (agent.role === 'Artist') return 'Park';
+  if (agent.role === 'Mayor') return 'Library';
+  return 'Park';
 }
 
 export function parseJevAction(value: unknown): JevAction | null {

@@ -199,7 +199,22 @@ export class BehaviorSystem {
             }
 
             if (agent.state === 'READING' && locAt?.name === 'Library') {
-                agent.increaseLibraryCharm(0.03);
+                agent.increaseLibraryCharm(0.03, time);
+                // 自然阅读周期：读完一卷书约 30~45 分钟（每 tick 约 2.5% 概率读完），或饥饿上升时主动合上书本休息
+                if (Math.random() < 0.025 || agent.hunger > 55) {
+                    agent.state = 'IDLE';
+                    agent.conversation = "Finished reading! Feeling like doing something else.";
+                    agent.conversationTTL = 30;
+                    if (locAt.entry) {
+                        agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
+                    }
+                }
+            } else if (agent.state === 'WORKING' && agent.role === 'Librarian' && locAt?.name === 'Library') {
+                // 图书管理员 Bob 沉浸在书香中，工作中同样获得图书知识与名望成长
+                agent.increaseLibraryCharm(0.015, time);
+            } else if (agent.state === 'WORKING' && agent.role === 'Mayor' && locAt?.name === 'Library') {
+                // 市长 Charlie 办公接待居民事务，增进小镇治理声望魅力
+                agent.increaseLibraryCharm(0.015, time);
             }
 
             // Shopping logic: High-end consumption at the Mall
@@ -493,40 +508,57 @@ export class BehaviorSystem {
             return;
         }
 
-        // 1. 紧急生命线判定：仅在启用本地决策且危及生命时（健康 < 45 或 饥饿 > 75），本地紧急自救规则立即介入防止死亡
-        const isHungerEmergency = agent.hunger > 75;
-        const isHealthEmergency = agent.health < 45;
+        // 1. 极端生命危机本能救命线（饥饿 > 80 或 健康 < 40）
+        // 生物不可剥夺的绝对求生底线：无论处于何种 AI 模式，绝不能让小人因网络延时或死锁而饿死或病死
+        const isHungerEmergency = agent.hunger > 80;
+        const isHealthEmergency = agent.health < 40;
 
-        if (this.localAiEnabled && isHungerEmergency && agent.state !== 'SLEEPING') {
+        if (isHungerEmergency && agent.state !== 'SLEEPING') {
             const restaurantCost = 0.05 * this.priceMultiplier;
             const bakeryCost = 0.03 * this.priceMultiplier;
             const homeCost = 0.01 * this.priceMultiplier;
 
             const foodLocation = this.getAvailableFoodLocation(agent, allAgents, finances.liquidFunds, restaurantCost, bakeryCost, homeCost);
             if (foodLocation) {
-                this.recordLocalDecision(agent, 'EAT', foodLocation, `严重饥饿濒临绝境 (饥饿度 ${agent.hunger.toFixed(0)})，紧急前往 ${foodLocation} 用餐。`, time, true);
+                if (this.localAiEnabled) {
+                    this.recordLocalDecision(agent, 'EAT', foodLocation, `严重饥饿濒临绝境 (饥饿度 ${agent.hunger.toFixed(0)})，紧急前往 ${foodLocation} 用餐。`, time, true);
+                } else {
+                    agent.recordDecision({ type: 'EAT', location: foodLocation, reason: `[生存本能] 严重饥饿 (${agent.hunger.toFixed(0)})，紧急前往 ${foodLocation} 就餐求生。`, time, status: 'planned' }, 'SYSTEM');
+                }
                 this.ensureAtLocation(agent, agentIndex, foodLocation, 'EATING', allAgents);
                 return;
             } else if (isBankOpen && (agent.bankBalance >= (5 * this.priceMultiplier) || agent.loanBalance < 200)) {
                 agent.state = 'BANKING';
                 agent.conversation = "I'm hungry but broke. Need a loan!";
                 agent.conversationTTL = 50;
-                this.recordLocalDecision(agent, 'BANK', 'Bank', `极度饥饿且身无分文，紧急前往银行申请贷款购买食物。`, time, true);
+                if (this.localAiEnabled) {
+                    this.recordLocalDecision(agent, 'BANK', 'Bank', `极度饥饿且身无分文，紧急前往银行申请贷款购买食物。`, time, true);
+                } else {
+                    agent.recordDecision({ type: 'BANK', location: 'Bank', reason: `[生存本能] 极度饥饿身无分文，前往银行紧急贷款。`, time, status: 'planned' }, 'SYSTEM');
+                }
                 this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
                 return;
             }
         }
 
-        if (this.localAiEnabled && isHealthEmergency && agent.state !== 'SLEEPING') {
+        if (isHealthEmergency && agent.state !== 'SLEEPING') {
             const hospitalCost = 0.2 * this.priceMultiplier;
             if (finances.liquidFunds >= hospitalCost) {
-                this.recordLocalDecision(agent, 'TREAT', 'Hospital', `生命垂危 (健康值 ${agent.health.toFixed(0)})，紧急前往医院急救。`, time, true);
+                if (this.localAiEnabled) {
+                    this.recordLocalDecision(agent, 'TREAT', 'Hospital', `生命垂危 (健康值 ${agent.health.toFixed(0)})，紧急前往医院急救。`, time, true);
+                } else {
+                    agent.recordDecision({ type: 'TREAT', location: 'Hospital', reason: `[生存本能] 生命垂危 (健康值 ${agent.health.toFixed(0)})，紧急就医抢救。`, time, status: 'planned' }, 'SYSTEM');
+                }
                 this.ensureAtLocation(agent, agentIndex, 'Hospital', 'TREATING', allAgents);
                 return;
             }
             const restaurantCost = 0.05 * this.priceMultiplier;
             if (finances.liquidFunds >= restaurantCost) {
-                this.recordLocalDecision(agent, 'EAT', 'Restaurant', `健康极度虚弱且就医资金紧张，紧急就餐补充体力。`, time, true);
+                if (this.localAiEnabled) {
+                    this.recordLocalDecision(agent, 'EAT', 'Restaurant', `健康极度虚弱且就医资金紧张，紧急就餐补充体力。`, time, true);
+                } else {
+                    agent.recordDecision({ type: 'EAT', location: 'Restaurant', reason: `[生存本能] 健康虚弱资金紧张，紧急就餐补充体力。`, time, status: 'planned' }, 'SYSTEM');
+                }
                 this.ensureAtLocation(agent, agentIndex, 'Restaurant', 'EATING', allAgents);
                 return;
             }
@@ -534,20 +566,28 @@ export class BehaviorSystem {
                 agent.state = 'BANKING';
                 agent.conversation = "I need money for medical treatment. To the bank!";
                 agent.conversationTTL = 50;
-                this.recordLocalDecision(agent, 'BANK', 'Bank', `急需抢救医疗资金，前往银行取款或贷款。`, time, true);
+                if (this.localAiEnabled) {
+                    this.recordLocalDecision(agent, 'BANK', 'Bank', `急需抢救医疗资金，前往银行取款或贷款。`, time, true);
+                } else {
+                    agent.recordDecision({ type: 'BANK', location: 'Bank', reason: `[生存本能] 急需就医资金，前往银行取款或贷款。`, time, status: 'planned' }, 'SYSTEM');
+                }
                 this.ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);
                 return;
             }
         }
 
         // 2. JEV 核心智能决策入口：
-        // 若启用本地决策，日常生理区间（健康 >= 45 且 饥饿 <= 75）由 JEV 决策；
-        // 若关闭本地决策，所有决策均只由 JEV 提供（解除健康与饥饿安全区间限制，全部交由 JEV 决策）
+        // 扩展可触发状态：当居民空闲 (IDLE)、或已完成持续阶段 (READING/WORKING 达到冷却间隔)、或饥饿度上升 (>= 50) 时，均允许 JEV 统筹评估并分配下一步行动
         const failures = this.jevFailures.get(agent.id) ?? 0;
-        const effectiveCooldown = this.jevCooldownMinutes + Math.min(60, failures * 15);
-        const jevHealthHungerCondition = this.localAiEnabled ? (agent.health >= 45 && agent.hunger <= 75) : true;
+        const baseCooldown = agent.hunger > 60 ? Math.max(5, Math.floor(this.jevCooldownMinutes / 3)) : this.jevCooldownMinutes;
+        const effectiveCooldown = baseCooldown + Math.min(60, failures * 15);
+        const jevHealthHungerCondition = this.localAiEnabled ? (agent.health >= 40 && agent.hunger <= 80) : true;
+        const canJevTriggerState = agent.state === 'IDLE' || 
+            agent.state === 'READING' || 
+            agent.state === 'WORKING' ||
+            (agent.hunger >= 50 && agent.state !== 'EATING' && agent.state !== 'MOVING' && agent.state !== 'BANKING' && agent.state !== 'SLEEPING');
 
-        if (this.jevEnabled && agent.state === 'IDLE' && jevHealthHungerCondition &&
+        if (this.jevEnabled && canJevTriggerState && jevHealthHungerCondition &&
             !this.jevPending.has(agent.id) &&
             (this.jevLastDecision.get(agent.id) ?? -Infinity) <= time - effectiveCooldown) {
             if (typeof window === 'undefined') console.log(`[JEV] trigger for ${agent.name} (state=${agent.state} hp=${agent.health} hunger=${agent.hunger})`);
@@ -818,7 +858,11 @@ export class BehaviorSystem {
         if (agent.role === 'Baker') return 'Bakery';
         if (agent.role === 'Librarian') return 'Library';
         if (agent.role === 'Police') return 'Police Station';
-        return 'Library';
+        if (agent.role === 'Doctor') return 'Hospital';
+        if (agent.role === 'Gardener') return 'Park';
+        if (agent.role === 'Artist') return 'Park';
+        if (agent.role === 'Mayor') return 'Library';
+        return 'Park';
     }
 
     getIncome(agent: Agent): number {
