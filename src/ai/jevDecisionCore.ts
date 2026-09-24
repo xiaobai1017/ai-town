@@ -46,7 +46,7 @@ const defaultClient = envApiKey
   : null;
 
 const DESCRIPTIONS: Record<string, string> = {
-  WORK: 'Work diligently at your assigned role to earn income.',
+  WORK: 'Report to your designated workplace and perform professional duties during work hours to earn steady wages and maintain town services.',
   EAT: 'Have a hearty meal at the Restaurant to deeply relieve hunger and regain stamina, or enjoy fresh snacks at the Bakery.',
   SLEEP: 'Return home to sleep and recharge physical energy.',
   SHOP: 'Visit the Mall to reward your hard work, buy stylish goods, and greatly elevate your social charm, lifestyle, and prestige (ideal when financially comfortable).',
@@ -187,12 +187,26 @@ export async function callJevBatch(
 
     const totalWealth = (agent.cash ?? 0) + (agent.bankBalance ?? 0);
     const isWealthyAndSafe = totalWealth >= 25 && (agent.health ?? 100) >= 55 && (agent.hunger ?? 0) <= 60;
+    const isWorkShift = (hour >= 8 && hour < 12) || (hour >= 13 && hour < 18);
+    const isLunchBreak = hour >= 12 && hour < 13;
+    const isEveningLeisure = hour >= 18 && hour < 22;
+    const isMorningPrep = hour >= 7 && hour < 8;
 
     let promptText: string;
     if (isNight) {
       promptText = `It is currently late night in AI Town (${hour}:00) and the weather is ${weatherMeta.nameEn} (${weatherMeta.emoji}). Resident ${agent.name} (${agent.role}) should rest or take essential care. Choose the best candidate action.`;
-    } else if (isWealthyAndSafe) {
-      promptText = `The weather in AI Town is currently ${weatherMeta.nameEn} (${weatherMeta.emoji}: ${weatherMeta.descriptionEn}). Resident ${agent.name} (${agent.role}) is in good health with healthy savings ($${totalWealth.toFixed(2)}). They have achieved financial security and should consider treating themselves at the Mall to boost charm and social prestige, or pursue leisure and study. Choose the best candidate action.`;
+    } else if (isWorkShift) {
+      promptText = `It is currently ${hour}:00 (work shift) in AI Town and the weather is ${weatherMeta.nameEn}. As a dedicated ${agent.role}, resident ${agent.name} is on duty and should diligently perform their professional duties at their workplace to earn wages, unless urgently hungry or sick. Choose the best candidate action.`;
+    } else if (isLunchBreak) {
+      promptText = `It is currently 12:00 noon (lunch break) in AI Town. Resident ${agent.name} (${agent.role}) should take a break from work to have lunch and replenish stamina. Choose the best candidate action.`;
+    } else if (isEveningLeisure) {
+      if (isWealthyAndSafe) {
+        promptText = `It is currently ${hour}:00 (evening leisure, after work) in AI Town. Resident ${agent.name} (${agent.role}) has completed their workday with healthy savings ($${totalWealth.toFixed(2)}). They should now enjoy their evening: consider treating themselves at the Mall to boost charm and social prestige, visit the library, or relax in the park. Choose the best candidate action.`;
+      } else {
+        promptText = `It is currently ${hour}:00 (evening leisure, after work) in AI Town. Resident ${agent.name} (${agent.role}) has completed their workday and can enjoy evening activities such as visiting the library, strolling the park, or having dinner. Choose the best candidate action.`;
+      }
+    } else if (isMorningPrep) {
+      promptText = `It is currently ${hour}:00 (early morning) in AI Town. Resident ${agent.name} (${agent.role}) should prepare for the day with breakfast or a light stroll before the 8:00 AM work shift begins. Choose the best candidate action.`;
     } else {
       promptText = `The weather in AI Town is currently ${weatherMeta.nameEn} (${weatherMeta.emoji}: ${weatherMeta.descriptionEn}). Choose the best candidate action for resident ${agent.name} (${agent.role}) balancing health, hunger, financial security, charm, and current weather.`;
     }

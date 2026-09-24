@@ -173,7 +173,7 @@ export interface JevDecisionContext {
     healthFloor: number;
     hungerCeiling: number;
     charmTarget: number;
-    priority: 'health_then_charm' | 'enjoy_wealth_and_elevate_charm' | 'maintain_health_and_savings';
+    priority: 'work_duty_and_earnings' | 'lunch_break_replenish' | 'enjoy_wealth_and_elevate_charm' | 'evening_leisure_and_study' | 'night_rest_and_recovery' | 'health_and_survival';
     safeReserve: number;
     disposableFunds: number;
   };
@@ -226,69 +226,69 @@ export function buildJevContext(
     // 偶尔睡不着在院子/街边稍事休息
     candidates.push({ type: 'WAIT' });
   } else {
-    // 日间与傍晚时段 (7:00 ~ 22:00)：根据天气动态调整户外活动与室内活动
-    // 雷雨天尽量不在户外漫步，晴天与阴天积极漫步公园
-    if (weather !== 'STORMY') {
-      candidates.push({ type: 'WANDER', location: 'Park' });
-    } else {
-      // 恶劣雷雨天，优先考虑就近到建筑内避雨或回家
-      candidates.push({ type: 'WAIT' });
-      candidates.push({ type: 'SLEEP', location: 'My House' });
-    }
+    // 日间与傍晚时段 (7:00 ~ 22:00) 细化为不同作息阶段
+    const isWorkShift = (hour >= 8 && hour < 12) || (hour >= 13 && hour < 18);
+    const isLunchBreak = hour >= 12 && hour < 13;
+    const isEveningLeisure = hour >= 18 && hour < 22;
+    const isMorningPrep = hour >= 7 && hour < 8;
 
-    // 工作时段 (8:00 ~ 17:00) 提供工作选项
-    if (hour >= 8 && hour < 18) {
+    if (isWorkShift) {
+      // 1. 上下文工作时段 (8:00~12:00, 13:00~18:00)：以坚守工作岗位赚取薪资为主
       candidates.push({ type: 'WORK', location: workLocation(agent) });
-    }
 
-    // 饥饿感出现时提供就餐选项（优先考虑资金、角色与天气）
-    if (agent.hunger >= 20) {
-      const foodCost = 0.05 * priceMultiplier;
-      const isShortOnCash = finances.liquidFunds < foodCost;
-      let eatTarget = 'Restaurant';
-
-      if (isShortOnCash) {
-        // 极度贫困时回家简餐
-        eatTarget = 'My House';
-      } else if (agent.role === 'Baker') {
-        // 面包师本人偏好自己的面包店
-        eatTarget = 'Bakery';
-      } else if (weather === 'SNOWY') {
-        // 下雪天偏好烘焙暖炉与热饮
-        eatTarget = 'Bakery';
-      } else {
-        // 正常情况下首选小镇餐厅享用丰盛正餐；轻度饥饿（20~35）时亦有小概率去面包店吃下午茶
-        eatTarget = (agent.hunger < 35 && Math.random() < 0.3) ? 'Bakery' : 'Restaurant';
+      // 工作中若明显饥饿提供就餐
+      if (agent.hunger >= 40) {
+        candidates.push({ type: 'EAT', location: 'Restaurant' });
       }
-
-      candidates.push({ type: 'EAT', location: eatTarget });
+      // 身体明显不适时允许就医
+      if (agent.health < 75) {
+        candidates.push({ type: 'TREAT', location: 'Hospital' });
+      }
+      candidates.push({ type: 'WAIT' });
+    } else if (isLunchBreak) {
+      // 2. 午餐休息时段 (12:00 ~ 13:00)：就餐休整补充能量
+      candidates.push({ type: 'EAT', location: agent.role === 'Baker' ? 'Bakery' : 'Restaurant' });
+      if (weather !== 'STORMY') {
+        candidates.push({ type: 'WANDER', location: 'Park' });
+      }
+      candidates.push({ type: 'WAIT' });
+    } else if (isEveningLeisure) {
+      // 3. 下班黄金休闲消费时段 (18:00 ~ 22:00)：属于市民自己的下班时光！
+      // 积蓄充裕时商场购物提升魅力 (商业时段至 21:00)
+      if (canPursueCharmSafely && hour < 21) {
+        candidates.push({ type: 'SHOP', location: 'Mall' });
+      }
+      // 图书馆静心阅读提升素养 (开馆至 21:00)
+      if (canReadSafely && hour < 21) {
+        candidates.push({ type: 'LIBRARY', location: 'Library' });
+      }
+      // 公园晚间漫步
+      if (weather !== 'STORMY') {
+        candidates.push({ type: 'WANDER', location: 'Park' });
+      }
+      // 晚餐
+      if (agent.hunger >= 25) {
+        candidates.push({ type: 'EAT', location: 'Restaurant' });
+      }
+      // 较晚时准备回家休息
+      if (hour >= 20 || agent.health < 55) {
+        candidates.push({ type: 'SLEEP', location: 'My House' });
+      }
+    } else if (isMorningPrep) {
+      // 4. 清晨准备时段 (7:00 ~ 8:00)：准备迎接新的一天
+      if (weather !== 'STORMY') {
+        candidates.push({ type: 'WANDER', location: 'Park' });
+      }
+      if (agent.hunger >= 20) {
+        candidates.push({ type: 'EAT', location: 'Bakery' });
+      }
+      candidates.push({ type: 'WAIT' });
     }
 
-    // 资金充裕且基本需求满足时提供商场消费 (商业时段 9:00 ~ 21:00)
-    if (canPursueCharmSafely && hour >= 9 && hour < 21) {
-      candidates.push({ type: 'SHOP', location: 'Mall' });
-    }
-
-    // 状态安全时提供图书馆静心阅读 (开馆时段 8:00 ~ 21:00)；雨雪天也是极佳的室内阅览去处
-    if (canReadSafely && hour >= 8 && hour < 21) {
-      candidates.push({ type: 'LIBRARY', location: 'Library' });
-    }
-
-    // 健康受损时提供就医选项
-    if (agent.health < 85) {
-      candidates.push({ type: 'TREAT', location: 'Hospital' });
-    }
-
-    // 银行：营业时段 (9:00 ~ 17:00)
-    // 现金过多(>=60)存钱，或急需救急贷款(现金<5且存款<5)，或还款，避免频繁被银行吸干手头现金
+    // 银行：营业时段 (9:00 ~ 17:00) 且有存贷款实际需求时提供
     const needsBank = (agent.cash >= 60) || (agent.cash < 5 && agent.bankBalance < 5) || (agent.loanBalance > 0 && agent.cash >= 20);
     if (hour >= 9 && hour < 17 && needsBank) {
       candidates.push({ type: 'BANK', location: 'Bank' });
-    }
-
-    // 晚间疲惫时提前提供回家休息选项 (20:00 之后或身体虚弱)
-    if (hour >= 20 || agent.health < 55) {
-      candidates.push({ type: 'SLEEP', location: 'My House' });
     }
   }
 
@@ -296,11 +296,21 @@ export function buildJevContext(
     candidates.push({ type: 'WAIT' });
   }
 
-  const isFinanciallySecure = (agent.cash + agent.bankBalance) >= 25 && finances.disposableFunds > 0;
-  const isHealthyAndWellFed = agent.health >= 60 && agent.hunger <= 55;
-  const priority = (isFinanciallySecure && isHealthyAndWellFed)
-    ? 'enjoy_wealth_and_elevate_charm'
-    : 'health_then_charm';
+  // 动态确定决策优先级
+  let priority: JevDecisionContext['objective']['priority'];
+  if (agent.health < 45 || agent.hunger > 75) {
+    priority = 'health_and_survival';
+  } else if (isNight) {
+    priority = 'night_rest_and_recovery';
+  } else if ((hour >= 8 && hour < 12) || (hour >= 13 && hour < 18)) {
+    priority = 'work_duty_and_earnings';
+  } else if (hour >= 12 && hour < 13) {
+    priority = 'lunch_break_replenish';
+  } else {
+    // 傍晚休闲时段 (18:00 ~ 22:00)
+    const isFinanciallySecure = (agent.cash + agent.bankBalance) >= 25 && finances.disposableFunds > 0;
+    priority = isFinanciallySecure ? 'enjoy_wealth_and_elevate_charm' : 'evening_leisure_and_study';
+  }
 
   return {
     agent: {
