@@ -364,21 +364,18 @@ export class OptimizedBehaviorSystem {
             if (shoppingCost > 0 && hasPaid) {
                 if (locAt) {
                     locAt.stats.revenue += shoppingCost;
-                    if (!locAt.stats.sessionRevenue) locAt.stats.sessionRevenue = {};
-                    locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + shoppingCost;
+                    this._logBuildingTransaction(locAt, shoppingCost, `${desc} to ${agent.name}`, time);
                 }
                 
-                if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || !agent.sessionFinance.description.includes('Shopping')) {
-                    agent.sessionFinance = { amount: 0, description: desc, type: 'expense' };
-                }
-                agent.sessionFinance.amount -= shoppingCost;
+                agent.logTransaction(-shoppingCost, desc, 'expense', time);
+                agent.sessionFinance = { amount: -shoppingCost, description: desc, type: 'expense' };
 
-                // 魅力系统：多花钱多获得魅力
+                // 魅力系统：多花钱多获得魅力（平滑长线成长）
                 agent.increaseCharm(shoppingCost);
                 
                 if (Math.random() < 0.05) {
                     agent.state = 'IDLE';
-                    agent.conversation = `Great shopping! My charm is now ${Math.round(agent.charm)}/100!`;
+                    agent.conversation = `Great shopping! (Charm: ${Math.round(agent.charm)}/100)`;
                     agent.conversationTTL = 50;
                 }
             } else {
@@ -395,14 +392,6 @@ export class OptimizedBehaviorSystem {
         } else {
             // 结束购物会话
             if (agent.sessionFinance && agent.sessionFinance.type === 'expense' && agent.sessionFinance.description.includes('Shopping')) {
-                if (agent.sessionFinance.amount < 0) {
-                    this._finalizeExpenseSession(agent, agent.sessionFinance, 'expense', time);
-                    const mall = this.cachedLocations.get('Mall');
-                    if (mall && mall.stats.sessionRevenue && mall.stats.sessionRevenue[agent.id]) {
-                        this._logBuildingTransaction(mall, mall.stats.sessionRevenue[agent.id], `Sales to ${agent.name}`, time);
-                        delete mall.stats.sessionRevenue[agent.id];
-                    }
-                }
                 agent.sessionFinance = undefined;
             }
         }

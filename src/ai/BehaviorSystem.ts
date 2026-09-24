@@ -303,17 +303,19 @@ export class BehaviorSystem {
                     if (shoppingCost > 0 && hasPaid) {
                         if (locAt) {
                             locAt.stats.revenue += shoppingCost;
-                            if (!locAt.stats.sessionRevenue) locAt.stats.sessionRevenue = {};
-                            locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + shoppingCost;
+                            // 立即记录到商场流水账本，无论何时查看商场面板均有清晰明细
+                            this.logBuildingTransaction(locAt, shoppingCost, `${desc} from ${agent.name}`, time);
                         }
+                        // 立即记录到居民个人账本
+                        agent.logTransaction(-shoppingCost, desc, 'expense', time);
                         agent.sessionFinance = { amount: -shoppingCost, description: desc, type: 'expense' };
                         agent.increaseCharm(shoppingCost, time);
                         if (shoppingCost >= 50.0) {
-                            agent.conversation = `Living large! Splurged $${shoppingCost.toFixed(2)} on luxury items! Charm is now ${Math.round(agent.charm)}/100! Sprinting to win!`;
+                            agent.conversation = `Living large! Splurged $${shoppingCost.toFixed(2)} on luxury items! (Charm: ${Math.round(agent.charm)}/100)`;
                         } else if (shoppingCost >= 15.0) {
-                            agent.conversation = `Bought something exquisite for $${shoppingCost.toFixed(2)}! Charm is now ${Math.round(agent.charm)}/100!`;
+                            agent.conversation = `Bought something exquisite for $${shoppingCost.toFixed(2)}! (Charm: ${Math.round(agent.charm)}/100)`;
                         } else {
-                            agent.conversation = `Got a lovely item for $${shoppingCost.toFixed(2)}! Charm is now ${Math.round(agent.charm)}!`;
+                            agent.conversation = `Got a lovely item for $${shoppingCost.toFixed(2)}! (Charm: ${Math.round(agent.charm)}/100)`;
                         }
                         agent.conversationTTL = 45;
                     } else {
@@ -337,14 +339,6 @@ export class BehaviorSystem {
                 }
             } else {
                 if (agent.sessionFinance && agent.sessionFinance.type === 'expense' && agent.sessionFinance.description.includes('Shopping')) {
-                    if (agent.sessionFinance.amount < 0) {
-                        agent.logTransaction(agent.sessionFinance.amount, agent.sessionFinance.description, 'expense', time);
-                        const building = this.world.locations.find(l => l.name === 'Mall');
-                        if (building && building.stats.sessionRevenue && building.stats.sessionRevenue[agent.id]) {
-                            this.logBuildingTransaction(building, building.stats.sessionRevenue[agent.id], `Sales to ${agent.name}`, time);
-                            delete building.stats.sessionRevenue[agent.id];
-                        }
-                    }
                     agent.sessionFinance = undefined;
                 }
             }

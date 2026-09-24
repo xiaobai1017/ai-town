@@ -269,16 +269,17 @@ export class Agent {
         }
     }
 
-    // Increase charm based on shopping amount (more spent = more charm) and number of friends
+    // Increase charm based on shopping amount (diminishing returns, encouraging long-term competition over many days)
     increaseCharm(shoppingAmount: number, timestamp: number = 0) {
-        // 多花钱多获得魅力：按消费金额线性换算（每 $1.00 换算 2.0 魅力，无死板门槛限制）
-        const baseCharmGain = shoppingAmount > 0 ? Math.round(shoppingAmount * 2.0 * 100) / 100 : 0;
+        // 平滑长线魅力成长模型：兼顾“多花多得魅力”与“游戏多日竞逐”
+        // 采用边际效益递减函数，单次高消费获得 2~5 点魅力，单次封顶 6.0 魅力
+        // $1 -> 0.42, $5 -> 0.83, $15 -> 1.31, $50 -> 2.17, $80 -> 2.65, $150 -> 3.44, $300 -> 4.60
+        const rawCharm = shoppingAmount > 0 ? (Math.pow(shoppingAmount, 0.42) * 0.42) : 0;
+        const baseCharmGain = Math.round(Math.min(6.0, rawCharm) * 100) / 100;
 
-        // Calculate number of friends (relationships >= 50)
+        // 好友社交加成：朋友多可带来额外社交声望，每个好友贡献 0.1 魅力加成，上限 0.8
         const friendCount = Object.values(this.relationships).filter(intimacy => intimacy >= 50).length;
-
-        // Additional charm gain from friends
-        const friendBonusNominal = Math.min(5, friendCount); // Maximum 5 bonus charm from friends
+        const friendBonusNominal = Math.round(Math.min(0.8, friendCount * 0.1) * 100) / 100;
 
         // Respect the 100 cap so the ledger reflects what was actually applied
         const charmBefore = this.charm;
@@ -290,7 +291,7 @@ export class Agent {
         this.charm = Math.min(100, Math.round((charmBefore + baseCharmGain + friendBonusNominal) * 100) / 100);
         this.lastShoppingAmount = shoppingAmount;
 
-        const description = shoppingAmount >= 5.0 ? 'Luxury Shopping' : (shoppingAmount > 0 ? 'Mall Shopping' : 'Window Shopping');
+        const description = shoppingAmount >= 15.0 ? 'Luxury Shopping' : (shoppingAmount > 0 ? 'Mall Shopping' : 'Window Shopping');
 
         pushCharmEvent(this.charmHistory, {
             source: 'shopping',

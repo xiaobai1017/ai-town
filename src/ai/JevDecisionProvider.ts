@@ -175,6 +175,11 @@ export interface CharmCompetitionInfo {
   leader: { name: string; charm: number; role: string };
   gapToLeader: number;
   runnerUp?: { name: string; charm: number };
+  currentDay: number;
+  daysRemaining: number;
+  isBottomDanger: boolean;
+  lowestRanked: { name: string; charm: number; role: string };
+  gapToEscapeBottom: number;
 }
 
 export interface JevDecisionContext {
@@ -192,7 +197,7 @@ export interface JevDecisionContext {
     healthFloor: number;
     hungerCeiling: number;
     charmTarget: number;
-    priority: 'work_duty_and_earnings' | 'lunch_break_replenish' | 'enjoy_wealth_and_elevate_charm' | 'evening_leisure_and_study' | 'night_rest_and_recovery' | 'health_and_survival' | 'win_championship_sprint';
+    priority: 'work_duty_and_earnings' | 'lunch_break_replenish' | 'enjoy_wealth_and_elevate_charm' | 'evening_leisure_and_study' | 'night_rest_and_recovery' | 'health_and_survival' | 'win_championship_sprint' | 'escape_execution_panic';
     safeReserve: number;
     disposableFunds: number;
   };
@@ -243,6 +248,15 @@ export function buildJevContext(
     const leader = sorted[0] || agent;
     const runnerUp = sorted.length > 1 ? sorted[1] : undefined;
 
+    const currentDay = Math.floor(time / 1440) + 1;
+    const daysRemaining = Math.max(1, 15 - Math.floor(time / 1440));
+    const lowest = sorted[sorted.length - 1] || agent;
+    const isBottomDanger = sorted.length > 1 && myRank >= sorted.length - 1;
+    const nextAboveLowest = sorted.length > 1 ? sorted[sorted.length - 2] : lowest;
+    const gapToEscapeBottom = myRank === sorted.length 
+      ? Math.round((nextAboveLowest.charm - agent.charm + 0.1) * 10) / 10 
+      : Math.round((agent.charm - lowest.charm) * 10) / 10;
+
     competition = {
       leaderboard,
       myRank,
@@ -251,10 +265,16 @@ export function buildJevContext(
       gapToLeader: myRank === 1
         ? (runnerUp ? Math.round((agent.charm - runnerUp.charm) * 10) / 10 : 0)
         : Math.round((leader.charm - agent.charm) * 10) / 10,
-      runnerUp: runnerUp ? { name: runnerUp.name, charm: Math.round(runnerUp.charm * 10) / 10 } : undefined
+      runnerUp: runnerUp ? { name: runnerUp.name, charm: Math.round(runnerUp.charm * 10) / 10 } : undefined,
+      currentDay,
+      daysRemaining,
+      isBottomDanger,
+      lowestRanked: { name: lowest.name, charm: Math.round(lowest.charm * 10) / 10, role: lowest.role },
+      gapToEscapeBottom
     };
   }
 
+  const isBottomDanger = competition?.isBottomDanger ?? false;
   const healthFloor = 50;
   const hungerCeiling = 65;
   const hour = Math.floor(time / 60) % 24;
@@ -300,6 +320,15 @@ export function buildJevContext(
       // 富豪冲刺：若资产丰厚 ($100+) 且处于下午时段 (14:00~18:00)，无需为了微薄工资苦守工位，提供商场消费候选冲刺 100 魅力总冠军
       if (isChampionSprint && hour >= 14 && canPursueCharmSafely) {
         candidates.push({ type: 'SHOP', location: 'Mall' });
+      }
+
+      // 处决危机自救：若处于倒数垫底危险区，下午时段允许去商场购物或去图书馆读书自救，摆脱第15天处决威胁
+      if (isBottomDanger && hour >= 14 && agent.health >= 50 && agent.hunger <= 65) {
+        if (canPursueCharmSafely && !candidates.some(c => c.type === 'SHOP')) {
+          candidates.push({ type: 'SHOP', location: 'Mall' });
+        } else if (canReadSafely && !candidates.some(c => c.type === 'LIBRARY')) {
+          candidates.push({ type: 'LIBRARY', location: 'Library' });
+        }
       }
 
       // 工作中若明显饥饿提供就餐
@@ -382,6 +411,9 @@ export function buildJevContext(
     priority = 'health_and_survival';
   } else if (isNight) {
     priority = 'night_rest_and_recovery';
+  } else if (isBottomDanger && (hour >= 14 && hour < 21) && agent.health >= 50 && agent.hunger <= 65) {
+    // 处决危机恐慌：倒数垫底面临第 15 天处决灭顶之灾，求生欲爆发全力自救
+    priority = 'escape_execution_panic';
   } else if (isChampionSprint && (hour >= 14 && hour < 21) && agent.health >= 50 && agent.hunger <= 60) {
     // 资产丰厚冲刺期：将金钱转化为魅力赢取小镇总冠军
     priority = 'win_championship_sprint';

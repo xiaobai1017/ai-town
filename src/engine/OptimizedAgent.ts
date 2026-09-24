@@ -294,19 +294,18 @@ export class OptimizedAgent {
         }
     }
 
-    // 优化：提高 charm 计算效率，多花钱多获得魅力（无最低消费门槛限制）
+    // 优化：平滑长线魅力成长模型，兼顾多花多得魅力与多日长线竞争
     increaseCharm(shoppingAmount: number) {
-        // 多花钱多获得魅力：按消费金额线性换算（每 $1.00 换算 2.0 魅力）
-        const baseCharmGain = shoppingAmount > 0 ? Math.round(shoppingAmount * 2.0 * 100) / 100 : 0;
-        const MAX_FRIEND_BONUS = 5;
+        // 采用边际效益递减函数，单次高消费获得 2~5 点魅力，单次封顶 6.0 魅力
+        const rawCharm = shoppingAmount > 0 ? (Math.pow(shoppingAmount, 0.42) * 0.42) : 0;
+        const baseCharmGain = Math.round(Math.min(6.0, rawCharm) * 100) / 100;
         
-        // 优化：使用 Object.values 而不是 Map 的 values 方法
         let friendCount = 0;
         for (const intimacy of Object.values(this.relationships)) {
             if (intimacy >= 50) friendCount++;
         }
         
-        const friendBonus = Math.min(MAX_FRIEND_BONUS, friendCount);
+        const friendBonus = Math.round(Math.min(0.8, friendCount * 0.1) * 100) / 100;
         const totalCharmGain = baseCharmGain + friendBonus;
         
         this.charm = Math.min(100, Math.round((this.charm + totalCharmGain) * 100) / 100);
