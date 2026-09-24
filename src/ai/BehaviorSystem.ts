@@ -242,44 +242,73 @@ export class BehaviorSystem {
                 agent.increaseLibraryCharm(0.015, time);
             }
 
-            // Shopping logic: High-end consumption at the Mall
+            // Shopping logic: Mall shopping without minimum spending (more spent = more charm)
             if (agent.state === 'SHOPPING') {
-                const luxuryCost = Math.max(5.0, 0.5 * this.priceMultiplier); // $5.00 spending per session
                 // Charge once per shopping session
-                if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || agent.sessionFinance.description !== 'Luxury Shopping') {
+                if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || !agent.sessionFinance.description.includes('Shopping')) {
+                    const hour = Math.floor(time / 60) % 24;
+                    const finances = planFinances(agent, this.priceMultiplier, hour);
+                    const disposable = Math.max(0, finances.disposableFunds);
+                    const availableCash = agent.cash;
+                    let shoppingCost = 0;
+
+                    // 商场不设最低消费：根据自身资产丰俭由人，多花多得魅力
+                    if (disposable >= 50) {
+                        // 富豪阶层：豪掷千金选购奢品，消费可支配资金的 15%~25%（$8 ~ $25），获取巨额魅力
+                        shoppingCost = Math.min(availableCash, Math.max(8.0, Math.min(disposable * 0.2, 25.0)));
+                    } else if (disposable >= 5) {
+                        // 中产阶层：适度消费品质好物（$2 ~ $5）
+                        shoppingCost = Math.min(availableCash, Math.max(2.0, Math.min(disposable * 0.25, 5.0)));
+                    } else if (availableCash >= 0.5) {
+                        // 平民阶层：购买平价小物或茶饮（$0.2 ~ $1.0）
+                        shoppingCost = Math.min(availableCash, Math.max(0.2, availableCash * 0.3));
+                    } else {
+                        // 零钱不足：Window Shopping 休闲游览（消费 $0）
+                        shoppingCost = 0;
+                    }
+                    shoppingCost = Math.round(shoppingCost * 100) / 100;
+
                     let hasPaid = false;
-                    if (agent.cash >= luxuryCost) {
-                        agent.cash -= luxuryCost;
-                        hasPaid = true;
-                    } else if (agent.bankBalance >= luxuryCost) {
-                        agent.bankBalance -= luxuryCost;
-                        hasPaid = true;
+                    if (shoppingCost > 0) {
+                        if (agent.cash >= shoppingCost) {
+                            agent.cash = Math.round((agent.cash - shoppingCost) * 100) / 100;
+                            hasPaid = true;
+                        } else if (agent.bankBalance >= shoppingCost) {
+                            agent.bankBalance = Math.round((agent.bankBalance - shoppingCost) * 100) / 100;
+                            hasPaid = true;
+                        }
                     }
 
-                    if (hasPaid) {
-                        agent.health = Math.min(100, agent.health + 2.0); // Luxury self-care
+                    agent.health = Math.min(100, agent.health + (shoppingCost > 0 ? 2.0 : 0.5));
+                    const desc = shoppingCost >= 5.0 ? 'Luxury Shopping' : (shoppingCost > 0 ? 'Mall Shopping' : 'Window Shopping');
+
+                    if (shoppingCost > 0 && hasPaid) {
                         if (locAt) {
-                            locAt.stats.revenue += luxuryCost;
+                            locAt.stats.revenue += shoppingCost;
                             if (!locAt.stats.sessionRevenue) locAt.stats.sessionRevenue = {};
-                            locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + luxuryCost;
+                            locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + shoppingCost;
                         }
-                        agent.sessionFinance = { amount: -luxuryCost, description: 'Luxury Shopping', type: 'expense' };
-                        agent.increaseCharm(luxuryCost, time);
-                        agent.conversation = `Bought something exquisite! Charm is now ${Math.round(agent.charm)}!`;
+                        agent.sessionFinance = { amount: -shoppingCost, description: desc, type: 'expense' };
+                        agent.increaseCharm(shoppingCost, time);
+                        if (shoppingCost >= 5.0) {
+                            agent.conversation = `Bought something exquisite for $${shoppingCost.toFixed(2)}! Charm is now ${Math.round(agent.charm)}!`;
+                        } else {
+                            agent.conversation = `Got a lovely item for $${shoppingCost.toFixed(2)}! Charm is now ${Math.round(agent.charm)}!`;
+                        }
                         agent.conversationTTL = 40;
                     } else {
-                        agent.state = 'IDLE';
-                        agent.conversation = "Too expensive! I'm out of here.";
-                        agent.conversationTTL = 50;
-                        if (locAt && locAt.entry) {
-                            agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
-                        }
+                        // 零钱不足时愉快逛街，绝不粗暴驱赶
+                        agent.sessionFinance = { amount: 0, description: 'Window Shopping', type: 'expense' };
+                        agent.conversation = `Enjoying window shopping at the Mall!`;
+                        agent.conversationTTL = 35;
                     }
                 } else {
-                    // Already purchased: agent enjoys browsing for a realistic session (~15 ticks)
+                    // Already browsed/purchased: agent enjoys browsing for a realistic session (~15 ticks)
                     if (Math.random() < 0.07 || stateDuration >= 25) {
                         agent.state = 'IDLE';
-                        agent.conversation = `Great shopping! My charm is now ${Math.round(agent.charm)}!`;
+                        agent.conversation = agent.sessionFinance && agent.sessionFinance.amount < 0
+                            ? `Great shopping! My charm is now ${Math.round(agent.charm)}!`
+                            : `Had a relaxing time browsing the Mall!`;
                         agent.conversationTTL = 40;
                         if (locAt && locAt.entry) {
                             agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
@@ -287,12 +316,14 @@ export class BehaviorSystem {
                     }
                 }
             } else {
-                if (agent.sessionFinance && agent.sessionFinance.type === 'expense' && agent.sessionFinance.description === 'Luxury Shopping') {
-                    agent.logTransaction(agent.sessionFinance.amount, agent.sessionFinance.description, 'expense', time);
-                    const building = this.world.locations.find(l => l.name === 'Mall');
-                    if (building && building.stats.sessionRevenue && building.stats.sessionRevenue[agent.id]) {
-                        this.logBuildingTransaction(building, building.stats.sessionRevenue[agent.id], `Sales to ${agent.name}`, time);
-                        delete building.stats.sessionRevenue[agent.id];
+                if (agent.sessionFinance && agent.sessionFinance.type === 'expense' && agent.sessionFinance.description.includes('Shopping')) {
+                    if (agent.sessionFinance.amount < 0) {
+                        agent.logTransaction(agent.sessionFinance.amount, agent.sessionFinance.description, 'expense', time);
+                        const building = this.world.locations.find(l => l.name === 'Mall');
+                        if (building && building.stats.sessionRevenue && building.stats.sessionRevenue[agent.id]) {
+                            this.logBuildingTransaction(building, building.stats.sessionRevenue[agent.id], `Sales to ${agent.name}`, time);
+                            delete building.stats.sessionRevenue[agent.id];
+                        }
                     }
                     agent.sessionFinance = undefined;
                 }
@@ -726,22 +757,18 @@ export class BehaviorSystem {
             return;
         }
 
-        // 3. 深夜统一回家就寝保底（22:00 ~ 7:00）
-        // 拟真人类作息准则：深更半夜在街头闲逛不仅不合常理，也容易造成行为发散。
-        // 无论何种 AI 模式，只要小人处于空闲 (IDLE) 且无紧急生存救治，统一返回家中就寝安歇。
+        // 3. 深夜常规作息管理（22:00 ~ 7:00）
         if (hour >= 22 || hour < 7) {
-            if (agent.state === 'IDLE') {
-                const sleepReason = `夜色深沉，返回家中就寝安歇。`;
-                if (this.localAiEnabled) {
-                    this.recordLocalDecision(agent, 'SLEEP', 'My House', sleepReason, time);
-                } else {
-                    agent.recordDecision({ type: 'SLEEP', location: 'My House', reason: `[自然作息] ${sleepReason}`, time, status: 'planned' }, 'SYSTEM');
-                }
-                this.ensureAtLocation(agent, agentIndex, 'My House', 'SLEEPING', allAgents);
-                return;
-            }
             if (agent.state === 'SLEEPING') {
                 return; // 正在家中熟睡修护
+            }
+            // 仅在开启本地AI决策时，深夜空闲由本地日程统一安排回家就寝；
+            // 若关闭本地AI，则日常生活作息完全交由 JEV AI 独立决策，本地绝不强制干预或生成本地决策记录
+            if (this.localAiEnabled && agent.state === 'IDLE') {
+                const sleepReason = `夜色深沉，返回家中就寝安歇。`;
+                this.recordLocalDecision(agent, 'SLEEP', 'My House', sleepReason, time);
+                this.ensureAtLocation(agent, agentIndex, 'My House', 'SLEEPING', allAgents);
+                return;
             }
         }
 
@@ -805,15 +832,16 @@ export class BehaviorSystem {
             }
         }
 
-        // 魅力购物
-        const isWealthy = finances.disposableFunds >= 100 * this.priceMultiplier;
-        const hasBasicNeedsMet = agent.hunger < 30 && agent.health > 80;
-        const isCharmSeeker = finances.canShop && isWealthy && hasBasicNeedsMet && agent.charm < 100;
-        if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < 0.2) {
+        // 魅力购物（商场不设最低消费，各阶层居民皆可体验购物与逛街）
+        const isWealthy = finances.disposableFunds >= 50 * this.priceMultiplier;
+        const hasBasicNeedsMet = agent.hunger < 45 && agent.health > 70;
+        const isCharmSeeker = finances.canShop && hasBasicNeedsMet && agent.charm < 100;
+        const shoppingChance = isWealthy ? 0.3 : (finances.disposableFunds > 0 ? 0.15 : 0.05);
+        if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < shoppingChance) {
             agent.state = 'SHOPPING';
-            agent.conversation = "Time to shop and increase my charm!";
+            agent.conversation = isWealthy ? "Time to shop and increase my charm!" : "Going to browse the Mall!";
             agent.conversationTTL = 50;
-            this.recordLocalDecision(agent, 'SHOP', 'Mall', `手头资产充裕且生理需求满足，前往商场选购品质好物提升个人魅力。`, time);
+            this.recordLocalDecision(agent, 'SHOP', 'Mall', isWealthy ? `手头资产充裕且生理需求满足，前往商场选购品质好物提升个人魅力。` : `闲暇时光前往商场逛街选购，提升个人品味与魅力。`, time);
             this.ensureAtLocation(agent, agentIndex, 'Mall', 'SHOPPING', allAgents);
             return;
         }
@@ -1015,11 +1043,13 @@ export class BehaviorSystem {
 
     getLeisureLocation(index: number, agent?: Agent): string {
         const totalWealth = agent ? (agent.cash + agent.bankBalance) : 0;
-        const isWealthy = totalWealth > 100 * this.priceMultiplier;
+        const isWealthy = totalWealth > 50 * this.priceMultiplier;
+
+        // 商场不设最低消费，富裕市民消费意愿高，普通居民亦有逛街兴趣
+        if (isWealthy && Math.random() < 0.6) return 'Mall';
+        if (Math.random() < 0.2) return 'Mall';
 
         const locations = ['Park', 'Library', 'Bakery', 'Restaurant'];
-        if (isWealthy && Math.random() < 0.7) return 'Mall'; // Wealthy agents love the Mall
-
         return locations[index % locations.length];
     }
 

@@ -28,7 +28,7 @@ const CONSTANTS = {
     DEPOSIT_INTEREST_RATE: 0.0001,
     CHARM_INCREASE_PER_5_UNITS: 1,
     MAX_CHARM_FROM_FRIENDS: 5,
-    MIN_SHOPPING_AMOUNT: 5.0,
+    MIN_SHOPPING_AMOUNT: 0.1,
     MIN_LOAN_REPAYMENT_FRACTION: 0.2,
     MAX_CHARM_GAIN: 10,
     POLICE_ARREST_DISTANCE: 1,
@@ -261,34 +261,50 @@ export class OptimizedBehaviorSystem {
     
     private _handleShopping(agent: OptimizedAgent, time: number) {
         if (agent.state === 'SHOPPING') {
-            const luxuryCost = Math.max(CONSTANTS.MIN_SHOPPING_AMOUNT, 0.5 * this.priceMultiplier); // 最低$5.00消费
+            const totalWealth = agent.getTotalWealth();
+            let shoppingCost = 0;
+
+            // 商场不设最低消费：根据自身资产丰俭由人，多花多得魅力
+            if (totalWealth >= 50) {
+                shoppingCost = Math.min(agent.cash, Math.max(8.0, Math.min(totalWealth * 0.15, 25.0)));
+            } else if (totalWealth >= 5) {
+                shoppingCost = Math.min(agent.cash, Math.max(2.0, Math.min(totalWealth * 0.2, 5.0)));
+            } else if (agent.cash >= 0.5) {
+                shoppingCost = Math.min(agent.cash, Math.max(0.2, agent.cash * 0.3));
+            } else {
+                shoppingCost = 0;
+            }
+            shoppingCost = Math.round(shoppingCost * 100) / 100;
+
             let hasPaid = false;
-            
-            if (agent.cash >= luxuryCost) {
-                agent.cash -= luxuryCost;
-                hasPaid = true;
-            } else if (agent.getTotalWealth() >= luxuryCost) {
-                agent.bankBalance -= luxuryCost;
-                hasPaid = true;
+            if (shoppingCost > 0) {
+                if (agent.cash >= shoppingCost) {
+                    agent.cash = Math.round((agent.cash - shoppingCost) * 100) / 100;
+                    hasPaid = true;
+                } else if (agent.bankBalance >= shoppingCost) {
+                    agent.bankBalance = Math.round((agent.bankBalance - shoppingCost) * 100) / 100;
+                    hasPaid = true;
+                }
             }
 
-            if (hasPaid) {
-                agent.health = Math.min(100, agent.health + 0.5); // 奢侈护理
-                const locAt = this._getLocationAt(agent.position);
-                
-                if (locAt) {
-                    locAt.stats.revenue += luxuryCost;
-                    if (!locAt.stats.sessionRevenue) locAt.stats.sessionRevenue = {};
-                    locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + luxuryCost;
-                }
-                
-                if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || agent.sessionFinance.description !== 'Luxury Shopping') {
-                    agent.sessionFinance = { amount: 0, description: 'Luxury Shopping', type: 'expense' };
-                }
-                agent.sessionFinance.amount -= luxuryCost;
+            agent.health = Math.min(100, agent.health + (shoppingCost > 0 ? 0.5 : 0.2));
+            const locAt = this._getLocationAt(agent.position);
+            const desc = shoppingCost >= 5.0 ? 'Luxury Shopping' : (shoppingCost > 0 ? 'Mall Shopping' : 'Window Shopping');
 
-                // 魅力系统：根据消费金额增加魅力
-                agent.increaseCharm(luxuryCost);
+            if (shoppingCost > 0 && hasPaid) {
+                if (locAt) {
+                    locAt.stats.revenue += shoppingCost;
+                    if (!locAt.stats.sessionRevenue) locAt.stats.sessionRevenue = {};
+                    locAt.stats.sessionRevenue[agent.id] = (locAt.stats.sessionRevenue[agent.id] || 0) + shoppingCost;
+                }
+                
+                if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || !agent.sessionFinance.description.includes('Shopping')) {
+                    agent.sessionFinance = { amount: 0, description: desc, type: 'expense' };
+                }
+                agent.sessionFinance.amount -= shoppingCost;
+
+                // 魅力系统：多花钱多获得魅力
+                agent.increaseCharm(shoppingCost);
                 
                 if (Math.random() < 0.05) {
                     agent.state = 'IDLE';
@@ -296,18 +312,26 @@ export class OptimizedBehaviorSystem {
                     agent.conversationTTL = 50;
                 }
             } else {
-                agent.state = 'IDLE';
-                agent.conversation = "Too expensive! I'm out of here.";
-                agent.conversationTTL = 50;
+                // 零钱不足时享受 Window Shopping，不轰赶小人
+                if (!agent.sessionFinance) {
+                    agent.sessionFinance = { amount: 0, description: 'Window Shopping', type: 'expense' };
+                }
+                if (Math.random() < 0.08) {
+                    agent.state = 'IDLE';
+                    agent.conversation = "Had a pleasant stroll around the Mall!";
+                    agent.conversationTTL = 40;
+                }
             }
         } else {
             // 结束购物会话
-            if (agent.sessionFinance && agent.sessionFinance.type === 'expense' && agent.sessionFinance.description === 'Luxury Shopping') {
-                this._finalizeExpenseSession(agent, agent.sessionFinance, 'expense', time);
-                const mall = this.cachedLocations.get('Mall');
-                if (mall && mall.stats.sessionRevenue && mall.stats.sessionRevenue[agent.id]) {
-                    this._logBuildingTransaction(mall, mall.stats.sessionRevenue[agent.id], `Sales to ${agent.name}`, time);
-                    delete mall.stats.sessionRevenue[agent.id];
+            if (agent.sessionFinance && agent.sessionFinance.type === 'expense' && agent.sessionFinance.description.includes('Shopping')) {
+                if (agent.sessionFinance.amount < 0) {
+                    this._finalizeExpenseSession(agent, agent.sessionFinance, 'expense', time);
+                    const mall = this.cachedLocations.get('Mall');
+                    if (mall && mall.stats.sessionRevenue && mall.stats.sessionRevenue[agent.id]) {
+                        this._logBuildingTransaction(mall, mall.stats.sessionRevenue[agent.id], `Sales to ${agent.name}`, time);
+                        delete mall.stats.sessionRevenue[agent.id];
+                    }
                 }
                 agent.sessionFinance = undefined;
             }
@@ -603,14 +627,15 @@ export class OptimizedBehaviorSystem {
             }
         }
 
-        // 魅力系统：有钱的代理优先购物增加魅力
-        const isWealthy = totalWealth >= CONSTANTS.WEALTHY_AGENT_MIN_THRESHOLD * this.priceMultiplier;
-        const hasBasicNeedsMet = agent.hunger < CONSTANTS.BASIC_NEEDS_MET_HUNGER && agent.health > CONSTANTS.BASIC_NEEDS_MET_HEALTH;
-        const isCharmSeeker = isWealthy && hasBasicNeedsMet && agent.charm < CONSTANTS.CHARM_MAX;
+        // 魅力系统：商场不设最低消费，满足基本生存即可根据预算消费或逛街
+        const isWealthy = totalWealth >= 50 * this.priceMultiplier;
+        const hasBasicNeedsMet = agent.hunger < 45 && agent.health > 70;
+        const isCharmSeeker = hasBasicNeedsMet && agent.charm < CONSTANTS.CHARM_MAX;
+        const shoppingChance = isWealthy ? 0.3 : (totalWealth >= 5 ? 0.15 : 0.05);
         
-        if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < CONSTANTS.WEALTHY_AGENT_SHOPPING_CHANCE) {
+        if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < shoppingChance) {
             agent.state = 'SHOPPING';
-            agent.conversation = "Time to shop and increase my charm!";
+            agent.conversation = isWealthy ? "Time to shop and increase my charm!" : "Going to browse the Mall!";
             agent.conversationTTL = 50;
             this._ensureAtLocation(agent, agentIndex, 'Mall', 'SHOPPING', allAgents);
             return;

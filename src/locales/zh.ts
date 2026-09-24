@@ -119,6 +119,7 @@ export const zh = {
     noDecisionHistory: '暂无决策日志记录',
     sourceJev: 'JEV 智能',
     sourceLocal: '本地规则',
+    sourceSystem: '生存保底',
     actionWork: '工作',
     actionEat: '就餐',
     actionSleep: '休息',

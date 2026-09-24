@@ -263,10 +263,10 @@ export class Agent {
         }
     }
 
-    // Increase charm based on shopping amount and number of friends
+    // Increase charm based on shopping amount (more spent = more charm) and number of friends
     increaseCharm(shoppingAmount: number, timestamp: number = 0) {
-        const charmPer5Units = 1; // 1 charm per $5.00 spent
-        const baseCharmGain = Math.min(10, Math.max(1, Math.floor(shoppingAmount / 5) * charmPer5Units));
+        // 多花钱多获得魅力：按消费金额线性换算（每 $1.00 换算 2.0 魅力，无死板门槛限制）
+        const baseCharmGain = shoppingAmount > 0 ? Math.round(shoppingAmount * 2.0 * 100) / 100 : 0;
 
         // Calculate number of friends (relationships >= 50)
         const friendCount = Object.values(this.relationships).filter(intimacy => intimacy >= 50).length;
@@ -284,9 +284,11 @@ export class Agent {
         this.charm = Math.min(100, Math.round((charmBefore + baseCharmGain + friendBonusNominal) * 100) / 100);
         this.lastShoppingAmount = shoppingAmount;
 
+        const description = shoppingAmount >= 5.0 ? 'Luxury Shopping' : (shoppingAmount > 0 ? 'Mall Shopping' : 'Window Shopping');
+
         pushCharmEvent(this.charmHistory, {
             source: 'shopping',
-            description: 'Luxury Shopping',
+            description,
             spent: shoppingAmount,
             baseGain: appliedBase,
             friendBonus: appliedFriend,

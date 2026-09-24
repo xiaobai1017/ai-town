@@ -173,7 +173,7 @@ export interface JevDecisionContext {
     healthFloor: number;
     hungerCeiling: number;
     charmTarget: number;
-    priority: 'health_then_charm';
+    priority: 'health_then_charm' | 'enjoy_wealth_and_elevate_charm' | 'maintain_health_and_savings';
     safeReserve: number;
     disposableFunds: number;
   };
@@ -279,8 +279,10 @@ export function buildJevContext(
       candidates.push({ type: 'TREAT', location: 'Hospital' });
     }
 
-    // 银行：营业时段 (9:00 ~ 17:00) 且现金充裕（存钱）或现金匮乏/有负债（贷款/取款）时提供
-    if (hour >= 9 && hour < 17 && (agent.cash >= 40 || agent.cash < 15 || agent.loanBalance > 0)) {
+    // 银行：营业时段 (9:00 ~ 17:00)
+    // 现金过多(>=60)存钱，或急需救急贷款(现金<5且存款<5)，或还款，避免频繁被银行吸干手头现金
+    const needsBank = (agent.cash >= 60) || (agent.cash < 5 && agent.bankBalance < 5) || (agent.loanBalance > 0 && agent.cash >= 20);
+    if (hour >= 9 && hour < 17 && needsBank) {
       candidates.push({ type: 'BANK', location: 'Bank' });
     }
 
@@ -294,6 +296,12 @@ export function buildJevContext(
     candidates.push({ type: 'WAIT' });
   }
 
+  const isFinanciallySecure = (agent.cash + agent.bankBalance) >= 25 && finances.disposableFunds > 0;
+  const isHealthyAndWellFed = agent.health >= 60 && agent.hunger <= 55;
+  const priority = (isFinanciallySecure && isHealthyAndWellFed)
+    ? 'enjoy_wealth_and_elevate_charm'
+    : 'health_then_charm';
+
   return {
     agent: {
       id: agent.id, name: agent.name, role: agent.role, state: agent.state,
@@ -302,7 +310,7 @@ export function buildJevContext(
       charm: agent.charm, memory: agent.memory
     },
     world: { time, hour, priceMultiplier, wageMultiplier, riskMultiplier, locations, weather },
-    objective: { healthFloor, hungerCeiling, charmTarget: 100, priority: 'health_then_charm', safeReserve: finances.safeReserve, disposableFunds: finances.disposableFunds },
+    objective: { healthFloor, hungerCeiling, charmTarget: 100, priority, safeReserve: finances.safeReserve, disposableFunds: finances.disposableFunds },
     candidates
   };
 }

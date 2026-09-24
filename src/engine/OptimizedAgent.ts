@@ -288,14 +288,11 @@ export class OptimizedAgent {
         }
     }
 
-    // 优化：提高 charm 计算效率
+    // 优化：提高 charm 计算效率，多花钱多获得魅力（无最低消费门槛限制）
     increaseCharm(shoppingAmount: number) {
-        // 预计算常量
-        const CHARM_PER_5_UNITS = 1;
-        const MAX_BASE_CHARM_GAIN = 10;
+        // 多花钱多获得魅力：按消费金额线性换算（每 $1.00 换算 2.0 魅力）
+        const baseCharmGain = shoppingAmount > 0 ? Math.round(shoppingAmount * 2.0 * 100) / 100 : 0;
         const MAX_FRIEND_BONUS = 5;
-        
-        const baseCharmGain = Math.min(MAX_BASE_CHARM_GAIN, Math.max(1, Math.floor(shoppingAmount / 5) * CHARM_PER_5_UNITS));
         
         // 优化：使用 Object.values 而不是 Map 的 values 方法
         let friendCount = 0;

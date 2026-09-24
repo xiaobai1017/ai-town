@@ -119,6 +119,7 @@ export const en = {
     noDecisionHistory: 'No decision logs yet',
     sourceJev: 'JEV AI',
     sourceLocal: 'Local Rule',
+    sourceSystem: 'System Guard',
     actionWork: 'Work',
     actionEat: 'Eat',
     actionSleep: 'Sleep',

@@ -49,8 +49,8 @@ const DESCRIPTIONS: Record<string, string> = {
   WORK: 'Work diligently at your assigned role to earn income.',
   EAT: 'Have a hearty meal at the Restaurant to deeply relieve hunger and regain stamina, or enjoy fresh snacks at the Bakery.',
   SLEEP: 'Return home to sleep and recharge physical energy.',
-  SHOP: 'Visit the Mall to shop trendy items, browse stores, and greatly boost personal charm, happiness, and social style.',
-  LIBRARY: 'Read books quietly at the Library for cultural study and steady intellect growth.',
+  SHOP: 'Visit the Mall to reward your hard work, buy stylish goods, and greatly elevate your social charm, lifestyle, and prestige (ideal when financially comfortable).',
+  LIBRARY: 'Read books quietly at the Library for steady, low-cost intellectual study and cultural reflection.',
   TREAT: 'Visit the Hospital to recover health and cure disease.',
   BANK: 'Visit the Bank to deposit surplus cash for interest, or take a loan if short on funds.',
   WANDER: 'Stroll pleasantly around the Park or town streets to relax and observe the community.',
@@ -77,7 +77,7 @@ export function formatJevReason(
       if (weather === 'RAINY' || weather === 'STORMY') {
         return `室外阴雨绵绵，前往商场室内漫步选购品质好物，避雨的同时提升生活品质。${confText}`;
       }
-      return `当前资金充裕且身心健康，前往商场选购品质好物提升个人魅力。${confText}`;
+      return `前往商场随心选购心仪好物，丰俭由人多花多获魅力提升。${confText}`;
     case 'LIBRARY':
       if (weather === 'RAINY' || weather === 'STORMY') {
         return `窗外细雨蒙蒙，前往图书馆静心研读图书借以避雨，在墨香中提升修养与心境。${confText}`;
@@ -185,9 +185,17 @@ export async function callJevBatch(
       [...availableTypes].map(type => [type, DESCRIPTIONS[type] || 'A safe available action.'])
     );
 
-    const promptText = isNight
-      ? `It is currently late night in AI Town (${hour}:00) and the weather is ${weatherMeta.nameEn} (${weatherMeta.emoji}). Resident ${agent.name} (${agent.role}) should rest or take essential care. Choose the best candidate action.`
-      : `The weather in AI Town is currently ${weatherMeta.nameEn} (${weatherMeta.emoji}: ${weatherMeta.descriptionEn}). Choose the best candidate action for resident ${agent.name} (${agent.role}) balancing health, hunger, financial security, charm, and current weather.`;
+    const totalWealth = (agent.cash ?? 0) + (agent.bankBalance ?? 0);
+    const isWealthyAndSafe = totalWealth >= 25 && (agent.health ?? 100) >= 55 && (agent.hunger ?? 0) <= 60;
+
+    let promptText: string;
+    if (isNight) {
+      promptText = `It is currently late night in AI Town (${hour}:00) and the weather is ${weatherMeta.nameEn} (${weatherMeta.emoji}). Resident ${agent.name} (${agent.role}) should rest or take essential care. Choose the best candidate action.`;
+    } else if (isWealthyAndSafe) {
+      promptText = `The weather in AI Town is currently ${weatherMeta.nameEn} (${weatherMeta.emoji}: ${weatherMeta.descriptionEn}). Resident ${agent.name} (${agent.role}) is in good health with healthy savings ($${totalWealth.toFixed(2)}). They have achieved financial security and should consider treating themselves at the Mall to boost charm and social prestige, or pursue leisure and study. Choose the best candidate action.`;
+    } else {
+      promptText = `The weather in AI Town is currently ${weatherMeta.nameEn} (${weatherMeta.emoji}: ${weatherMeta.descriptionEn}). Choose the best candidate action for resident ${agent.name} (${agent.role}) balancing health, hunger, financial security, charm, and current weather.`;
+    }
 
     const qKey = `action_${agent.id}`;
     questions[qKey] = choice(promptText, criteria);

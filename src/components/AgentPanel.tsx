@@ -122,16 +122,21 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                                 agent.decisionHistory.map((d, i) => {
                                     const actionKey = `agent.action${d.type.charAt(0) + d.type.slice(1).toLowerCase()}`;
                                     const actionLabel = t(actionKey) || d.type;
-                                    const sourceLabel = d.source === 'JEV' ? t('agent.sourceJev') : t('agent.sourceLocal');
+                                    const sourceLabel = d.source === 'JEV' 
+                                        ? t('agent.sourceJev') 
+                                        : d.source === 'SYSTEM' 
+                                            ? t('agent.sourceSystem') 
+                                            : t('agent.sourceLocal');
+                                    const badgeClass = d.source === 'JEV'
+                                        ? 'bg-purple-900/80 text-purple-300 border border-purple-600'
+                                        : d.source === 'SYSTEM'
+                                            ? 'bg-amber-900/80 text-amber-300 border border-amber-600'
+                                            : 'bg-blue-900/80 text-blue-300 border border-blue-600';
                                     return (
                                         <div key={i} className="border-b border-slate-800/60 pb-2 last:border-0 text-left space-y-1">
                                             <div className="flex items-center justify-between gap-1">
                                                 <div className="flex items-center gap-1.5 flex-wrap">
-                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                                        d.source === 'JEV' 
-                                                            ? 'bg-purple-900/80 text-purple-300 border border-purple-600' 
-                                                            : 'bg-blue-900/80 text-blue-300 border border-blue-600'
-                                                    }`}>
+                                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${badgeClass}`}>
                                                         {sourceLabel}
                                                     </span>
                                                     <span className="text-slate-100 font-bold">
