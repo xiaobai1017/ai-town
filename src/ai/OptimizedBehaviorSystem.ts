@@ -75,7 +75,7 @@ export class OptimizedBehaviorSystem {
 
     update(agents: OptimizedAgent[], time: number) {
         // 优化：批量处理警察和罪犯
-        this._handleLawEnforcement(agents);
+        this._handleLawEnforcement(agents, time);
         
         // 优化：批量处理代理更新
         for (const agent of agents) {
@@ -86,7 +86,7 @@ export class OptimizedBehaviorSystem {
         }
     }
     
-    private _handleLawEnforcement(agents: OptimizedAgent[]) {
+    private _handleLawEnforcement(agents: OptimizedAgent[], time: number) {
         // 分离警察和罪犯，减少嵌套循环
         const police: OptimizedAgent[] = [];
         const criminals: OptimizedAgent[] = [];
@@ -107,10 +107,19 @@ export class OptimizedBehaviorSystem {
                 
                 if (dist <= CONSTANTS.POLICE_ARREST_DISTANCE) {
                     criminal.state = 'ARRESTED';
+                    criminal.arrestTime = time;
                     criminal.conversation = "Oh no! I'm caught!";
                     criminal.conversationTTL = 50;
                     officer.conversation = "You're under arrest!";
                     officer.conversationTTL = 50;
+
+                    const policeStation = this.world.locations.find(l => l.name === 'Police Station');
+                    if (policeStation) {
+                        if (!policeStation.stats.extra) {
+                            policeStation.stats.extra = { arrests: 0, bailCollected: 0 };
+                        }
+                        policeStation.stats.extra.arrests = (policeStation.stats.extra.arrests || 0) + 1;
+                    }
                 }
             }
         }
@@ -147,8 +156,56 @@ export class OptimizedBehaviorSystem {
         // 处理银行利息
         this._handleBankInterest(agent, time);
         
+        // 处理犯罪现场作案与结算
+        this._handleCrime(agent, time);
+        
         // 决策行动
         this._decideAction(agent, agents.indexOf(agent), time, agents);
+    }
+
+    private _handleCrime(agent: OptimizedAgent, time: number) {
+        if (agent.state !== 'CRIMINAL') return;
+        const locAt = this.world.locations.find(loc =>
+            loc.x !== undefined && loc.y !== undefined && loc.width !== undefined && loc.height !== undefined &&
+            agent.position.x >= loc.x && agent.position.x < loc.x + loc.width &&
+            agent.position.y >= loc.y && agent.position.y < loc.y + loc.height
+        );
+        if (locAt) {
+            if (locAt.name === 'Restaurant' || locAt.name === 'Bakery') {
+                const foodVal = 0.05 * this.priceMultiplier;
+                agent.hunger = Math.max(0, agent.hunger - 35);
+                locAt.stats.revenue = Math.max(0, locAt.stats.revenue - foodVal);
+                agent.logTransaction(foodVal, `Dine & Dash at ${locAt.name}`, 'criminal', time);
+                agent.state = 'IDLE';
+                agent.conversation = "Sneaked a free meal and got away with it!";
+                agent.conversationTTL = 50;
+                if (locAt.entry) {
+                    agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world as any);
+                }
+            } else if (locAt.name === 'Mall') {
+                const loot = Math.round((1.0 + Math.random() * 4.0) * 100) / 100;
+                agent.cash = Math.round((agent.cash + loot) * 100) / 100;
+                locAt.stats.revenue = Math.max(0, locAt.stats.revenue - loot);
+                agent.logTransaction(loot, 'Shoplifting at Mall', 'criminal', time);
+                agent.state = 'IDLE';
+                agent.conversation = `Shoplifted $${loot.toFixed(2)} goods! Got away cleanly.`;
+                agent.conversationTTL = 50;
+                if (locAt.entry) {
+                    agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world as any);
+                }
+            } else if (locAt.name === 'Bank') {
+                const loot = Math.round((5.0 + Math.random() * 10.0) * 100) / 100;
+                agent.cash = Math.round((agent.cash + loot) * 100) / 100;
+                locAt.stats.revenue = Math.max(0, locAt.stats.revenue - loot);
+                agent.logTransaction(loot, 'Heist at Bank', 'criminal', time);
+                agent.state = 'IDLE';
+                agent.conversation = `Pulled off a quick heist! Stashed $${loot.toFixed(2)}!`;
+                agent.conversationTTL = 50;
+                if (locAt.entry) {
+                    agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world as any);
+                }
+            }
+        }
     }
     
     private _updateLocationStats(agent: OptimizedAgent) {
@@ -264,14 +321,24 @@ export class OptimizedBehaviorSystem {
             const totalWealth = agent.getTotalWealth();
             let shoppingCost = 0;
 
-            // 商场不设最低消费：根据自身资产丰俭由人，多花多得魅力
-            if (totalWealth >= 50) {
-                shoppingCost = Math.min(agent.cash, Math.max(8.0, Math.min(totalWealth * 0.15, 25.0)));
+            // 商场消费阶梯：解除 $25 硬封顶，富豪阶层豪掷千金冲刺 100 魅力冠军
+            if (totalWealth >= 500) {
+                // 超级富豪/大富翁：冲刺 100 魅力总冠军，单次 $50 ~ $300
+                shoppingCost = Math.min(totalWealth, Math.max(50.0, Math.min(totalWealth * 0.25, 300.0)));
+            } else if (totalWealth >= 100) {
+                // 丰厚富裕阶层：选购高级奢品与时尚潮物，消费 $15 ~ $80
+                shoppingCost = Math.min(totalWealth, Math.max(15.0, Math.min(totalWealth * 0.25, 80.0)));
+            } else if (totalWealth >= 50) {
+                // 小康富裕阶层：消费 $8 ~ $35
+                shoppingCost = Math.min(totalWealth, Math.max(8.0, Math.min(totalWealth * 0.2, 35.0)));
             } else if (totalWealth >= 5) {
-                shoppingCost = Math.min(agent.cash, Math.max(2.0, Math.min(totalWealth * 0.2, 5.0)));
-            } else if (agent.cash >= 0.5) {
-                shoppingCost = Math.min(agent.cash, Math.max(0.2, agent.cash * 0.3));
+                // 中产阶层：适度消费品质好物（$2 ~ $5）
+                shoppingCost = Math.min(totalWealth, Math.max(2.0, Math.min(totalWealth * 0.25, 5.0)));
+            } else if (totalWealth >= 0.5) {
+                // 平民阶层：购买平价小物或茶饮（$0.2 ~ $1.0）
+                shoppingCost = Math.min(totalWealth, Math.max(0.2, totalWealth * 0.3));
             } else {
+                // 零钱不足：Window Shopping 休闲游览（消费 $0）
                 shoppingCost = 0;
             }
             shoppingCost = Math.round(shoppingCost * 100) / 100;
@@ -281,15 +348,18 @@ export class OptimizedBehaviorSystem {
                 if (agent.cash >= shoppingCost) {
                     agent.cash = Math.round((agent.cash - shoppingCost) * 100) / 100;
                     hasPaid = true;
-                } else if (agent.bankBalance >= shoppingCost) {
-                    agent.bankBalance = Math.round((agent.bankBalance - shoppingCost) * 100) / 100;
+                } else if (agent.cash + agent.bankBalance >= shoppingCost) {
+                    // 现金不足时支持刷银行卡组合扣款
+                    const remaining = shoppingCost - agent.cash;
+                    agent.cash = 0;
+                    agent.bankBalance = Math.round((agent.bankBalance - remaining) * 100) / 100;
                     hasPaid = true;
                 }
             }
 
             agent.health = Math.min(100, agent.health + (shoppingCost > 0 ? 0.5 : 0.2));
             const locAt = this._getLocationAt(agent.position);
-            const desc = shoppingCost >= 5.0 ? 'Luxury Shopping' : (shoppingCost > 0 ? 'Mall Shopping' : 'Window Shopping');
+            const desc = shoppingCost >= 15.0 ? 'Luxury Shopping' : (shoppingCost > 0 ? 'Mall Shopping' : 'Window Shopping');
 
             if (shoppingCost > 0 && hasPaid) {
                 if (locAt) {
@@ -308,7 +378,7 @@ export class OptimizedBehaviorSystem {
                 
                 if (Math.random() < 0.05) {
                     agent.state = 'IDLE';
-                    agent.conversation = `Great shopping! My charm is now ${Math.round(agent.charm)}!`;
+                    agent.conversation = `Great shopping! My charm is now ${Math.round(agent.charm)}/100!`;
                     agent.conversationTTL = 50;
                 }
             } else {
@@ -546,11 +616,27 @@ export class OptimizedBehaviorSystem {
 
         // 最高优先级：如果被逮捕，强制前往警察局
         if (agent.state === 'ARRESTED') {
-            this._ensureAtLocation(agent, agentIndex, 'Police Station', 'SLEEPING', allAgents); // 使用睡觉作为"坐牢"
-            if (Math.random() < 0.005) { // 有机会获释
+            this._ensureAtLocation(agent, agentIndex, 'Police Station', 'ARRESTED', allAgents);
+            const servedTime = agent.arrestTime ? (time - agent.arrestTime) : 30;
+            if (servedTime >= 30 || Math.random() < 0.02) {
+                const bail = Math.min(3, Math.floor(agent.cash * 100) / 100);
+                if (bail > 0) {
+                    agent.cash = Math.round((agent.cash - bail) * 100) / 100;
+                    agent.logTransaction(-bail, "Bail paid at Police Station", 'criminal', time);
+                    const policeStation = this.cachedLocations.get('Police Station') || this.world.locations.find(l => l.name === 'Police Station');
+                    if (policeStation) {
+                        if (!policeStation.stats.extra) policeStation.stats.extra = { arrests: 0, bailCollected: 0 };
+                        policeStation.stats.extra.bailCollected = (policeStation.stats.extra.bailCollected || 0) + bail;
+                    }
+                }
                 agent.state = 'IDLE';
-                agent.conversation = "I've served my time.";
+                agent.arrestTime = undefined;
+                agent.conversation = "I've served my time. A fresh start!";
                 agent.conversationTTL = 50;
+                const ps = this.cachedLocations.get('Police Station') || this.world.locations.find(l => l.name === 'Police Station');
+                if (ps?.entry) {
+                    agent.moveTo({ x: ps.entry.x, y: ps.entry.y + 1 }, this.world as any);
+                }
             }
             return;
         }
@@ -569,11 +655,22 @@ export class OptimizedBehaviorSystem {
             }
         }
 
-        // 低机会犯罪（如果不是警察）
-        if (agent.role !== 'Police' && agent.state === 'IDLE' && Math.random() < CONSTANTS.CRIME_CHANCE) {
-            agent.state = 'CRIMINAL';
-            agent.conversation = "Time for some mischief...";
-            agent.conversationTTL = 50;
+        // 小概率犯罪决策（受城镇风险与绝境调节）
+        if (agent.role !== 'Police' && agent.state === 'IDLE') {
+            const isDesperate = agent.cash < 5 && agent.bankBalance < 5 && agent.hunger >= 55;
+            const baseChance = isDesperate ? 0.03 : CONSTANTS.CRIME_CHANCE;
+            const crimeChance = baseChance * Math.max(0.5, this.riskMultiplier);
+
+            if (Math.random() < crimeChance) {
+                const targetLoc = agent.hunger >= 50
+                    ? (Math.random() < 0.6 ? 'Restaurant' : 'Bakery')
+                    : (Math.random() < 0.7 ? 'Mall' : 'Bank');
+                agent.state = 'CRIMINAL';
+                agent.conversation = "Time for some mischief...";
+                agent.conversationTTL = 50;
+                this._ensureAtLocation(agent, agentIndex, targetLoc, 'CRIMINAL', allAgents);
+                return;
+            }
         }
 
         // 极度饥饿逻辑：最高优先级 - 始终优先在饥饿时进食（中断移动）

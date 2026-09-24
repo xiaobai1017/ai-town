@@ -165,6 +165,8 @@ export const en = {
       RESTING: 'Resting',
       HEALING: 'Healing',
       BANKING: 'Banking',
+      CRIMINAL: 'Criminal',
+      ARRESTED: 'Arrested',
       DEAD: 'Deceased',
     },
     deaths: {

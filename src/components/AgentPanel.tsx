@@ -164,7 +164,7 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                     <div>
                         <span className="font-semibold text-slate-500 text-sm">{t('agent.status')}</span>
                         <p className="text-md capitalize flex items-center gap-2 font-medium text-slate-700">
-                            <span className={`w-2 h-2 rounded-full ${agent.state === 'IDLE' ? 'bg-green-500' : agent.state === 'DEAD' ? 'bg-slate-900' : 'bg-yellow-500'}`}></span>
+                            <span className={`w-2 h-2 rounded-full ${agent.state === 'IDLE' ? 'bg-green-500' : agent.state === 'DEAD' ? 'bg-slate-900' : agent.state === 'CRIMINAL' ? 'bg-rose-600 animate-pulse' : agent.state === 'ARRESTED' ? 'bg-purple-600' : 'bg-yellow-500'}`}></span>
                             {displayState}
                         </p>
                         {agent.state === 'DEAD' && displayDeath && (

@@ -150,12 +150,31 @@ export function setJevQueuePaused(paused: boolean) {
 
 import { WeatherType } from '../engine/Weather';
 
-export type JevActionType = 'WORK' | 'EAT' | 'SLEEP' | 'SHOP' | 'LIBRARY' | 'TREAT' | 'BANK' | 'WANDER' | 'WAIT';
+export type JevActionType = 'WORK' | 'EAT' | 'SLEEP' | 'SHOP' | 'LIBRARY' | 'TREAT' | 'BANK' | 'WANDER' | 'WAIT' | 'CRIME';
 
 export interface JevAction {
   type: JevActionType;
   location?: string;
   reason?: string;
+}
+
+export interface CharmCompetitor {
+  id: string;
+  name: string;
+  role: string;
+  charm: number;
+  totalWealth: number;
+  rank: number;
+  isSelf?: boolean;
+}
+
+export interface CharmCompetitionInfo {
+  leaderboard: CharmCompetitor[];
+  myRank: number;
+  totalResidents: number;
+  leader: { name: string; charm: number; role: string };
+  gapToLeader: number;
+  runnerUp?: { name: string; charm: number };
 }
 
 export interface JevDecisionContext {
@@ -173,14 +192,15 @@ export interface JevDecisionContext {
     healthFloor: number;
     hungerCeiling: number;
     charmTarget: number;
-    priority: 'work_duty_and_earnings' | 'lunch_break_replenish' | 'enjoy_wealth_and_elevate_charm' | 'evening_leisure_and_study' | 'night_rest_and_recovery' | 'health_and_survival';
+    priority: 'work_duty_and_earnings' | 'lunch_break_replenish' | 'enjoy_wealth_and_elevate_charm' | 'evening_leisure_and_study' | 'night_rest_and_recovery' | 'health_and_survival' | 'win_championship_sprint';
     safeReserve: number;
     disposableFunds: number;
   };
+  competition?: CharmCompetitionInfo;
   candidates: JevAction[];
 }
 
-const ALLOWED_ACTIONS = new Set<JevActionType>(['WORK', 'EAT', 'SLEEP', 'SHOP', 'LIBRARY', 'TREAT', 'BANK', 'WANDER', 'WAIT']);
+const ALLOWED_ACTIONS = new Set<JevActionType>(['WORK', 'EAT', 'SLEEP', 'SHOP', 'LIBRARY', 'TREAT', 'BANK', 'WANDER', 'WAIT', 'CRIME']);
 
 export function buildJevContext(
   agent: Agent,
@@ -189,20 +209,61 @@ export function buildJevContext(
   priceMultiplier: number,
   wageMultiplier: number,
   riskMultiplier: number,
-  weather: WeatherType = 'SUNNY'
+  weather: WeatherType = 'SUNNY',
+  allAgents?: Agent[]
 ): JevDecisionContext {
   const locations = world.locations.map(location => ({
     name: location.name,
     distance: Math.abs(agent.position.x - location.entry.x) + Math.abs(agent.position.y - location.entry.y)
   }));
 
+  // 计算全镇居民的魅力与财富竞争榜单
+  let competition: CharmCompetitionInfo | undefined;
+  if (allAgents && allAgents.length > 0) {
+    const aliveAgents = allAgents.filter(a => a.state !== 'DEAD');
+    const sorted = [...aliveAgents].sort((a, b) => {
+      if (b.charm !== a.charm) return b.charm - a.charm;
+      const wealthA = a.cash + a.bankBalance;
+      const wealthB = b.cash + b.bankBalance;
+      return wealthB - wealthA;
+    });
+
+    const leaderboard: CharmCompetitor[] = sorted.map((a, idx) => ({
+      id: a.id,
+      name: a.name,
+      role: a.role,
+      charm: Math.round(a.charm * 10) / 10,
+      totalWealth: Math.round((a.cash + a.bankBalance) * 100) / 100,
+      rank: idx + 1,
+      isSelf: a.id === agent.id
+    }));
+
+    const myIndex = sorted.findIndex(a => a.id === agent.id);
+    const myRank = myIndex >= 0 ? myIndex + 1 : 1;
+    const leader = sorted[0] || agent;
+    const runnerUp = sorted.length > 1 ? sorted[1] : undefined;
+
+    competition = {
+      leaderboard,
+      myRank,
+      totalResidents: sorted.length,
+      leader: { name: leader.name, charm: Math.round(leader.charm * 10) / 10, role: leader.role },
+      gapToLeader: myRank === 1
+        ? (runnerUp ? Math.round((agent.charm - runnerUp.charm) * 10) / 10 : 0)
+        : Math.round((leader.charm - agent.charm) * 10) / 10,
+      runnerUp: runnerUp ? { name: runnerUp.name, charm: Math.round(runnerUp.charm * 10) / 10 } : undefined
+    };
+  }
+
   const healthFloor = 50;
   const hungerCeiling = 65;
   const hour = Math.floor(time / 60) % 24;
   const finances = planFinances(agent, priceMultiplier, hour);
+  const totalWealth = (agent.cash ?? 0) + (agent.bankBalance ?? 0);
   const canPursueCharmSafely = agent.health >= 45 && agent.hunger <= 65 &&
     finances.canShop && agent.charm < 100;
   const canReadSafely = agent.health >= 50 && agent.hunger <= 60 && agent.charm < 100;
+  const isChampionSprint = totalWealth >= 100 && agent.charm < 100 && finances.canShop;
 
   const isNight = hour >= 22 || hour < 7;
 
@@ -235,6 +296,11 @@ export function buildJevContext(
     if (isWorkShift) {
       // 1. 上下文工作时段 (8:00~12:00, 13:00~18:00)：以坚守工作岗位赚取薪资为主
       candidates.push({ type: 'WORK', location: workLocation(agent) });
+
+      // 富豪冲刺：若资产丰厚 ($100+) 且处于下午时段 (14:00~18:00)，无需为了微薄工资苦守工位，提供商场消费候选冲刺 100 魅力总冠军
+      if (isChampionSprint && hour >= 14 && canPursueCharmSafely) {
+        candidates.push({ type: 'SHOP', location: 'Mall' });
+      }
 
       // 工作中若明显饥饿提供就餐
       if (agent.hunger >= 40) {
@@ -290,6 +356,20 @@ export function buildJevContext(
     if (hour >= 9 && hour < 17 && needsBank) {
       candidates.push({ type: 'BANK', location: 'Bank' });
     }
+
+    // 小概率犯罪候选 (CRIME)：生存绝望所迫、或在特定风险氛围下偶发侥幸投机恶念
+    const isDesperate = agent.cash < 5 && agent.bankBalance < 5 && agent.hunger >= 55;
+    const isCrimeSpur = Math.random() < (0.04 * Math.max(0.5, riskMultiplier));
+    if (agent.role !== 'Police' && (isDesperate || isCrimeSpur)) {
+      const crimeTarget = agent.hunger >= 50 ? 'Restaurant' : (Math.random() < 0.7 ? 'Mall' : 'Bank');
+      candidates.push({
+        type: 'CRIME',
+        location: crimeTarget,
+        reason: isDesperate
+          ? '身无分文且饥肠辘辘，走投无路之下铤而走险尝试吃霸王餐或盗窃'
+          : '受城镇风险氛围与侥幸投机心理驱使，冒险尝试非法牟利'
+      });
+    }
   }
 
   if (candidates.length < 2) {
@@ -302,6 +382,9 @@ export function buildJevContext(
     priority = 'health_and_survival';
   } else if (isNight) {
     priority = 'night_rest_and_recovery';
+  } else if (isChampionSprint && (hour >= 14 && hour < 21) && agent.health >= 50 && agent.hunger <= 60) {
+    // 资产丰厚冲刺期：将金钱转化为魅力赢取小镇总冠军
+    priority = 'win_championship_sprint';
   } else if ((hour >= 8 && hour < 12) || (hour >= 13 && hour < 18)) {
     priority = 'work_duty_and_earnings';
   } else if (hour >= 12 && hour < 13) {
@@ -321,6 +404,7 @@ export function buildJevContext(
     },
     world: { time, hour, priceMultiplier, wageMultiplier, riskMultiplier, locations, weather },
     objective: { healthFloor, hungerCeiling, charmTarget: 100, priority, safeReserve: finances.safeReserve, disposableFunds: finances.disposableFunds },
+    competition,
     candidates
   };
 }

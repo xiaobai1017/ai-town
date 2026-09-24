@@ -105,7 +105,13 @@ export class OptimizedAgent {
     }
 
     sanitizeEmoji() {
-        if (this.state !== 'DEAD' && this.emoji === '🪦') {
+        if (this.state === 'DEAD') {
+            this.emoji = '🪦';
+        } else if (this.state === 'CRIMINAL') {
+            this.emoji = '🦹';
+        } else if (this.state === 'ARRESTED') {
+            this.emoji = '⛓️';
+        } else if (this.emoji === '🪦' || this.emoji === '🦹' || this.emoji === '⛓️') {
             this.emoji = this.originalEmoji || getOriginalAgentEmoji(this);
         }
     }

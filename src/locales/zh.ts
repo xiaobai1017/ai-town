@@ -165,6 +165,8 @@ export const zh = {
       RESTING: '小憩中',
       HEALING: '治疗中',
       BANKING: '办理银行业务',
+      CRIMINAL: '犯罪作案',
+      ARRESTED: '被捕拘留',
       DEAD: '已离世',
     },
     deaths: {
