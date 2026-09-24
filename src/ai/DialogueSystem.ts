@@ -239,6 +239,7 @@ export class DialogueSystem {
     }
 
     async startConversation(a: Agent, b: Agent, gameTime: number, weather: WeatherType = 'SUNNY') {
+        if (a.state === 'DEAD' || b.state === 'DEAD') return;
         this.isGenerating = true;
         a.state = 'TALKING';
         b.state = 'TALKING';
@@ -384,15 +385,19 @@ Also, strictly start with a tag: [POS], [NEU], or [NEG] based on your reaction.`
                 gameTime: gameTime
             });
 
-            a.conversation = textA_Final;
-            b.conversation = textB_Final;
-            a.conversationTTL = 80;
-            b.conversationTTL = 80;
+            if ((a.state as string) !== 'DEAD') {
+                a.conversation = textA_Final;
+                a.conversationTTL = 80;
+            }
+            if ((b.state as string) !== 'DEAD') {
+                b.conversation = textB_Final;
+                b.conversationTTL = 80;
+            }
 
         } catch (e) {
             console.error(e);
-            a.state = 'IDLE';
-            b.state = 'IDLE';
+            if ((a.state as string) !== 'DEAD') a.state = 'IDLE';
+            if ((b.state as string) !== 'DEAD') b.state = 'IDLE';
         } finally {
             this.isGenerating = false;
         }

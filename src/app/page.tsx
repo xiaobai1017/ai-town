@@ -18,6 +18,7 @@ import { SettingsModal } from "@/components/SettingsModal";
 import { loadModelSettings, AppModelSettings, SETTINGS_CHANGE_EVENT } from "@/lib/modelSettings";
 import { useI18n } from "@/lib/i18n";
 import { WEATHER_CONFIGS, WeatherType } from "@/engine/Weather";
+import { getOriginalAgentEmoji } from "@/data/townScript";
 
 export default function Home() {
   const { language, setLanguage, t } = useI18n();
@@ -263,7 +264,7 @@ export default function Home() {
                   className="flex items-center gap-1 bg-white px-2 py-0.5 rounded shadow-xs cursor-pointer hover:shadow-sm hover:text-purple-700 transition-all font-medium"
                 >
                   <span className="text-[10px] font-black text-purple-600">#{index + 1}</span>
-                  <span>{agent.state === 'DEAD' ? '🪦' : agent.emoji}</span>
+                  <span>{agent.state === 'DEAD' ? '🪦' : (agent.emoji === '🪦' ? (agent.originalEmoji || getOriginalAgentEmoji(agent)) : agent.emoji)}</span>
                   <span>{agent.name}</span>
                   <span className="font-bold text-purple-600 font-mono">{agent.charm.toFixed(1).replace(/\.0$/, '')}</span>
                 </span>
@@ -426,7 +427,7 @@ export default function Home() {
                   >
                     <div className="flex items-center gap-2.5">
                       <span className="text-lg group-hover:scale-110 transition-transform">
-                        {index === 0 ? '👑' : index === 1 ? '🥈' : index === 2 ? '🥉' : a.state === 'DEAD' ? '🪦' : a.emoji}
+                        {index === 0 ? '👑' : index === 1 ? '🥈' : index === 2 ? '🥉' : a.state === 'DEAD' ? '🪦' : (a.emoji === '🪦' ? (a.originalEmoji || getOriginalAgentEmoji(a)) : a.emoji)}
                       </span>
                       <div>
                         <p className={`font-bold leading-none group-hover:text-white ${a.charm >= 100 ? 'text-yellow-400' : 'text-slate-200'}`}>

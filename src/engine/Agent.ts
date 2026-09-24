@@ -4,6 +4,7 @@
  */
 
 import { Coordinate, World } from './World';
+import { getOriginalAgentEmoji } from '../data/townScript';
 
 export type AgentState = 'IDLE' | 'MOVING' | 'WORKING' | 'READING' | 'TALKING' | 'SLEEPING' | 'CRIMINAL' | 'ARRESTED' | 'EATING' | 'BANKING' | 'TREATING' | 'SHOPPING' | 'DEAD';
 
@@ -63,6 +64,7 @@ export class Agent {
     state: AgentState = 'IDLE';
     memory: AgentMemory = {};
     emoji: string;
+    originalEmoji: string = '🙂';
     conversation: string | null = null;
     conversationTTL: number = 0;
     cash: number = 20.0;
@@ -119,14 +121,24 @@ export class Agent {
         this.role = role;
         this.position = startPos;
         this.color = color;
-        this.emoji = emoji;
+        this.originalEmoji = (emoji && emoji !== '🪦') ? emoji : getOriginalAgentEmoji({ name, role, emoji });
+        this.emoji = (emoji && emoji !== '🪦') ? emoji : this.originalEmoji;
         this.description = description;
     }
 
-    update(world: World, agents: Agent[]) {
-        if (this.state !== 'DEAD') {
-            this.livingTicks++;
+    sanitizeEmoji() {
+        if (this.state !== 'DEAD' && this.emoji === '🪦') {
+            this.emoji = this.originalEmoji || getOriginalAgentEmoji(this);
         }
+    }
+
+    update(world: World, agents: Agent[]) {
+        this.sanitizeEmoji();
+        if (this.state === 'DEAD') {
+            return;
+        }
+
+        this.livingTicks++;
 
         if (this.conversationTTL > 0) {
             this.conversationTTL--;
@@ -142,6 +154,7 @@ export class Agent {
     }
 
     moveTo(target: Coordinate, world: World) {
+        if (this.state === 'DEAD') return;
         const path = world.findPath(this.position, target);
         if (path && path.length > 0) {
             this.targetPosition = target;
@@ -155,6 +168,7 @@ export class Agent {
     }
 
     move(agents: Agent[], world: World) {
+        if (this.state === 'DEAD') return;
         if (this.path.length > 0) {
             const nextStep = this.path[0];
 
@@ -223,6 +237,7 @@ export class Agent {
     }
 
     stop(world?: World, agents?: Agent[]) {
+        if (this.state === 'DEAD') return;
         this.path = [];
         this.targetPosition = null;
         this.state = 'IDLE';

@@ -120,6 +120,10 @@ export function clearReplay() {
 
 export function restoreFrame(frame: ReplayFrame): ReplayFrame {
   const world = Object.assign(new World(frame.world.width, frame.world.height), clone(frame.world));
-  const agents = frame.agents.map(raw => Object.assign(new Agent(raw.id, raw.name, raw.role, raw.position, raw.color, raw.emoji, raw.description), clone(raw)));
+  const agents = frame.agents.map(raw => {
+    const agent = Object.assign(new Agent(raw.id, raw.name, raw.role, raw.position, raw.color, raw.emoji, raw.description), clone(raw));
+    agent.sanitizeEmoji();
+    return agent;
+  });
   return { ...clone(frame), world, agents };
 }

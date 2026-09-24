@@ -89,6 +89,7 @@ export class BehaviorSystem {
         });
 
         agents.forEach((agent, index) => {
+            agent.sanitizeEmoji();
             if (agent.state === 'DEAD') return;
 
             const curStateDur = this.agentStateDuration.get(agent.id);
@@ -412,6 +413,9 @@ export class BehaviorSystem {
                 const accidents = ["Traffic Accident", "Industrial Mishap", "Struck by Lightning"];
                 agent.state = 'DEAD';
                 agent.emoji = '🪦';
+                agent.path = [];
+                agent.targetPosition = null;
+                agent.arrivalState = undefined;
                 agent.deathTime = time;
                 agent.deathCause = accidents[Math.floor(Math.random() * accidents.length)];
                 agent.conversation = `Tragedy: ${agent.deathCause}`;
@@ -427,6 +431,9 @@ export class BehaviorSystem {
                 if (Math.random() < 0.001) { // 0.1% chance per tick at 0 health
                     agent.state = 'DEAD';
                     agent.emoji = '🪦';
+                    agent.path = [];
+                    agent.targetPosition = null;
+                    agent.arrivalState = undefined;
                     agent.deathTime = time;
                     // Death Cause logic: Priority check. Use safe threshold for hunger.
                     if (agent.hunger >= 99.9) {
@@ -573,7 +580,7 @@ export class BehaviorSystem {
     }
 
     decideAction(agent: Agent, agentIndex: number, time: number, allAgents: Agent[]) {
-        if (!this.isRunning) return;
+        if (!this.isRunning || agent.state === 'DEAD') return;
 
         const hour = Math.floor(time / 60) % 24;
         const totalWealth = agent.cash + agent.bankBalance;
@@ -690,7 +697,7 @@ export class BehaviorSystem {
             const context = buildJevContext(agent, this.world, time, this.priceMultiplier, this.wageMultiplier, this.riskMultiplier, this.weather);
             void requestJevDecision(context)
                 .then(action => {
-                    if (!this.isRunning) return;
+                    if (!this.isRunning || agent.state === 'DEAD') return;
                     this.jevLastDecision.set(agent.id, time);
                     if (action) {
                         this.jevFailures.delete(agent.id);
@@ -872,6 +879,7 @@ export class BehaviorSystem {
     }
 
     private applyJevAction(agent: Agent, action: JevAction, agentIndex: number, allAgents: Agent[], time: number) {
+        if (agent.state === 'DEAD') return;
         // Never let an asynchronous JEV response violate the health/charm objective.
         const finances = planFinances(agent, this.priceMultiplier, Math.floor(time / 60) % 24);
         if (action.type === 'SHOP' && (!finances.canShop || agent.health < 40 || agent.hunger > 75 || agent.charm >= 100)) {
@@ -1016,6 +1024,7 @@ export class BehaviorSystem {
     }
 
     ensureAtLocation(agent: Agent, agentIndex: number, locationName: string, desiredState: AgentState, allAgents: Agent[]) {
+        if (agent.state === 'DEAD') return;
         const location = this.world.locations.find(l => l.name === locationName || l.type === locationName.toLowerCase())
             || this.world.locations[0];
 

@@ -9,6 +9,7 @@ import { Agent } from '@/engine/Agent';
 import { ZoomIn, ZoomOut, Move, ChevronDown, ChevronUp, RotateCcw } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
 import { WeatherType } from '@/engine/Weather';
+import { getOriginalAgentEmoji } from '@/data/townScript';
 
 interface GameCanvasProps {
     world: World;
@@ -160,7 +161,8 @@ export function GameCanvas({ world, agents, onSelectAgent, onSelectLocation, tim
             ctx.font = '20px serif';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(agent.emoji, ax + TILE_SIZE / 2, ay + TILE_SIZE / 2 + 2);
+            const displayEmoji = agent.state === 'DEAD' ? '🪦' : (agent.emoji === '🪦' ? (agent.originalEmoji || getOriginalAgentEmoji(agent)) : agent.emoji);
+            ctx.fillText(displayEmoji, ax + TILE_SIZE / 2, ay + TILE_SIZE / 2 + 2);
 
             ctx.fillStyle = 'black';
             ctx.font = '10px sans-serif';

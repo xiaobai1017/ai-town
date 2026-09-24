@@ -63,7 +63,11 @@ export function useGameLoop() {
 
     const hydrateServerState = useCallback((raw: any): GameState => {
         const world = Object.assign(new World(raw.world.width, raw.world.height), raw.world);
-        const agents = raw.agents.map((item: any) => Object.assign(new Agent(item.id, item.name, item.role, item.position, item.color, item.emoji, item.description), item));
+        const agents = raw.agents.map((item: any) => {
+            const agent = Object.assign(new Agent(item.id, item.name, item.role, item.position, item.color, item.emoji, item.description), item);
+            agent.sanitizeEmoji();
+            return agent;
+        });
         return {
             ...raw,
             world,

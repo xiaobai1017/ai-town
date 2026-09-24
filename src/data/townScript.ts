@@ -17,6 +17,34 @@ export const INITIAL_AGENTS = [
     { id: '7', name: 'Officer Miller', role: 'Police', color: '#1e3a8a', emoji: '👮', start: { x: 15, y: 12 }, description: 'Vigilant protector of the peace.' },
 ];
 
+export const DEFAULT_AGENT_EMOJIS: Record<string, string> = {
+    'Alice': '👩‍🍳',
+    'Bob': '👨‍🏫',
+    'Charlie': '🤵',
+    'Diana': '👩‍🌾',
+    'Eve': '🎨',
+    'Frank': '👨‍⚕️',
+    'Officer Miller': '👮',
+};
+
+export const DEFAULT_ROLE_EMOJIS: Record<string, string> = {
+    'Baker': '👩‍🍳',
+    'Librarian': '👨‍🏫',
+    'Mayor': '🤵',
+    'Gardener': '👩‍🌾',
+    'Artist': '🎨',
+    'Doctor': '👨‍⚕️',
+    'Police': '👮',
+};
+
+export function getOriginalAgentEmoji(agent: { name?: string; role?: string; emoji?: string; originalEmoji?: string }): string {
+    if (agent.originalEmoji && agent.originalEmoji !== '🪦') return agent.originalEmoji;
+    if (agent.name && DEFAULT_AGENT_EMOJIS[agent.name]) return DEFAULT_AGENT_EMOJIS[agent.name];
+    if (agent.role && DEFAULT_ROLE_EMOJIS[agent.role]) return DEFAULT_ROLE_EMOJIS[agent.role];
+    if (agent.emoji && agent.emoji !== '🪦') return agent.emoji;
+    return '🙂';
+}
+
 export function initializeWorld(): { world: World, agents: Agent[] } {
     const world = new World(60, 40); // 60x40 grid
 

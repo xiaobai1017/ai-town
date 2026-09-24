@@ -7,6 +7,7 @@ import React from 'react';
 import { Agent } from '@/engine/Agent';
 import { X, Landmark, History, ChevronRight, ChevronDown, PlusCircle, MinusCircle, Sparkles } from 'lucide-react';
 import { useI18n, formatGameTime as formatGameTimeUtil } from '@/lib/i18n';
+import { getOriginalAgentEmoji } from '@/data/townScript';
 
 interface AgentPanelProps {
     agent: Agent | null;
@@ -49,12 +50,13 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
     const displayDesc = t(`agent.descriptions.${agent.name}`) || agent.description;
     const displayState = t(`agent.states.${agent.state}`) || agent.state;
     const displayDeath = agent.deathCause ? (t(`agent.deaths.${agent.deathCause}`) || agent.deathCause) : '';
+    const displayEmoji = agent.state === 'DEAD' ? '🪦' : (agent.emoji === '🪦' ? (agent.originalEmoji || getOriginalAgentEmoji(agent)) : agent.emoji);
 
     return (
         <div className="fixed right-4 top-20 w-80 bg-white p-4 rounded-lg shadow-xl border border-slate-200 max-h-[80vh] overflow-y-auto z-[60]">
             <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold flex items-center gap-2">
-                    <span className="text-2xl">{agent.emoji}</span> {agent.name}
+                    <span className="text-2xl">{displayEmoji}</span> {agent.name}
                 </h2>
                 <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded" title={t('common.close')}>
                     <X size={20} />
@@ -314,6 +316,7 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                                     : intimacy > 40 
                                     ? (isZh ? '朋友' : 'Friend') 
                                     : (isZh ? '熟人' : 'Acquaintance');
+                                const otherEmoji = other.state === 'DEAD' ? '🪦' : (other.emoji === '🪦' ? (other.originalEmoji || getOriginalAgentEmoji(other)) : other.emoji);
                                 return (
                                     <div
                                         key={otherId}
@@ -322,7 +325,7 @@ export function AgentPanel({ agent, allAgents, onClose, onShowHistory }: AgentPa
                                         title={t('agent.viewHistory')}
                                     >
                                         <div className="flex items-center gap-2">
-                                            <span>{other.emoji}</span>
+                                            <span>{otherEmoji}</span>
                                             <span className="font-medium text-slate-800">{other.name}</span>
                                         </div>
                                         <div className="text-right">

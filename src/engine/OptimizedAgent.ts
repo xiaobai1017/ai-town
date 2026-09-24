@@ -5,6 +5,7 @@
 
 import { Coordinate, World } from './World';
 import type { CharmEvent, JevIntent, DecisionLogEntry } from './Agent';
+import { getOriginalAgentEmoji } from '../data/townScript';
 
 export type AgentState = 'IDLE' | 'MOVING' | 'WORKING' | 'READING' | 'TALKING' | 'SLEEPING' | 'CRIMINAL' | 'ARRESTED' | 'EATING' | 'BANKING' | 'TREATING' | 'SHOPPING' | 'DEAD';
 
@@ -41,6 +42,7 @@ export class OptimizedAgent {
     state: AgentState = 'IDLE';
     memory: AgentMemory = {};
     emoji: string;
+    originalEmoji: string = '🙂';
     conversation: string | null = null;
     conversationTTL: number = 0;
     cash: number = 0;
@@ -93,7 +95,8 @@ export class OptimizedAgent {
         this.role = role;
         this.position = startPos;
         this.color = color;
-        this.emoji = emoji;
+        this.originalEmoji = (emoji && emoji !== '🪦') ? emoji : getOriginalAgentEmoji({ name, role, emoji });
+        this.emoji = (emoji && emoji !== '🪦') ? emoji : this.originalEmoji;
         this.world = world;
         this.description = description;
         
@@ -101,10 +104,19 @@ export class OptimizedAgent {
         this._totalWealth = this.cash + this.bankBalance;
     }
 
-    update(world: any, agents: any) { // 使用 any 类型以保持与原始 Agent 的兼容性
-        if (this.state !== 'DEAD') {
-            this.livingTicks++;
+    sanitizeEmoji() {
+        if (this.state !== 'DEAD' && this.emoji === '🪦') {
+            this.emoji = this.originalEmoji || getOriginalAgentEmoji(this);
         }
+    }
+
+    update(world: any, agents: any) { // 使用 any 类型以保持与原始 Agent 的兼容性
+        this.sanitizeEmoji();
+        if (this.state === 'DEAD') {
+            return;
+        }
+
+        this.livingTicks++;
 
         // 优化：批量处理状态变化
         this._updateTemporaryStates();
@@ -119,9 +131,12 @@ export class OptimizedAgent {
     
     // 保留优化的更新方法，但命名为不同的名称
     updateOptimized(agents: OptimizedAgent[]) {
-        if (this.state !== 'DEAD') {
-            this.livingTicks++;
+        this.sanitizeEmoji();
+        if (this.state === 'DEAD') {
+            return;
         }
+
+        this.livingTicks++;
 
         // 优化：批量处理状态变化
         this._updateTemporaryStates();
@@ -160,6 +175,7 @@ export class OptimizedAgent {
     }
 
     moveTo(target: Coordinate, world?: any) { // 添加可选的 world 参数以保持兼容性
+        if (this.state === 'DEAD') return;
         // 如果提供了 world 参数，则使用它，否则使用 this.world
         const actualWorld = world || this.world;
         const path = actualWorld.findPath(this.position, target);
@@ -175,6 +191,7 @@ export class OptimizedAgent {
     }
 
     move(agents: any) { // 使用 any 类型以保持与原始 Agent 的兼容性
+        if (this.state === 'DEAD') return;
         if (this.path.length > 0) {
             const nextStep = this.path[0];
 
@@ -193,6 +210,7 @@ export class OptimizedAgent {
     
     // 保留优化的移动方法，但命名为不同的名称
     moveOptimized(agents: OptimizedAgent[]) {
+        if (this.state === 'DEAD') return;
         if (this.path.length > 0) {
             const nextStep = this.path[0];
 
@@ -247,12 +265,14 @@ export class OptimizedAgent {
     }
     
     protected _stopMoving() {
+        if (this.state === 'DEAD') return;
         this.path = [];
         this.targetPosition = null;
         this.state = 'IDLE';
     }
 
     stop() {
+        if (this.state === 'DEAD') return;
         this.path = [];
         this.targetPosition = null;
         this.state = 'IDLE';

@@ -79,6 +79,7 @@ export class OptimizedBehaviorSystem {
         
         // 优化：批量处理代理更新
         for (const agent of agents) {
+            agent.sanitizeEmoji();
             if (agent.state === 'DEAD') continue;
             
             this._updateAgentState(agent, time, agents);
@@ -447,6 +448,9 @@ export class OptimizedBehaviorSystem {
             const accidents = ["Traffic Accident", "Industrial Mishap", "Struck by Lightning"];
             agent.state = 'DEAD';
             agent.emoji = '🪦';
+            agent.path = [];
+            agent.targetPosition = null;
+            (agent as any).arrivalState = undefined;
             agent.deathTime = time;
             agent.deathCause = accidents[Math.floor(Math.random() * accidents.length)];
             agent.conversation = `Tragedy: ${agent.deathCause}`;
@@ -466,6 +470,9 @@ export class OptimizedBehaviorSystem {
             if (Math.random() < CONSTANTS.DEATH_CHECK_CHANCE) { // 0.1% 概率死亡
                 agent.state = 'DEAD';
                 agent.emoji = '🪦';
+                agent.path = [];
+                agent.targetPosition = null;
+                (agent as any).arrivalState = undefined;
                 agent.deathTime = time;
                 
                 if (agent.hunger >= 99.9) {
@@ -510,6 +517,7 @@ export class OptimizedBehaviorSystem {
     }
     
     private _decideAction(agent: OptimizedAgent, agentIndex: number, time: number, allAgents: OptimizedAgent[]) {
+        if (agent.state === 'DEAD') return;
         const totalWealth = agent.getTotalWealth();
 
         // 最高优先级：如果被逮捕，强制前往警察局
@@ -702,6 +710,7 @@ export class OptimizedBehaviorSystem {
     }
     
     private _ensureAtLocation(agent: OptimizedAgent, agentIndex: number, locationName: string, desiredState: AgentState, allAgents: OptimizedAgent[]) {
+        if (agent.state === 'DEAD') return;
         const location = this.cachedLocations.get(locationName) || this.world.locations[0];
         if (!location) return;
 

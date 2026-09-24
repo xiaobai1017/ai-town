@@ -7,6 +7,7 @@ import React from 'react';
 import { Agent } from '@/engine/Agent';
 import { X } from 'lucide-react';
 import { useI18n } from '@/lib/i18n';
+import { getOriginalAgentEmoji } from '@/data/townScript';
 
 interface HistoryModalProps {
     agentA: Agent;
@@ -17,6 +18,8 @@ interface HistoryModalProps {
 export function HistoryModal({ agentA, agentB, onClose }: HistoryModalProps) {
     const { t, isZh } = useI18n();
     const history = agentA.conversationHistory[agentB.id] || [];
+    const emojiA = agentA.state === 'DEAD' ? '🪦' : (agentA.emoji === '🪦' ? (agentA.originalEmoji || getOriginalAgentEmoji(agentA)) : agentA.emoji);
+    const emojiB = agentB.state === 'DEAD' ? '🪦' : (agentB.emoji === '🪦' ? (agentB.originalEmoji || getOriginalAgentEmoji(agentB)) : agentB.emoji);
 
     return (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -24,8 +27,8 @@ export function HistoryModal({ agentA, agentB, onClose }: HistoryModalProps) {
                 <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50 rounded-t-2xl">
                     <div className="flex items-center gap-3">
                         <div className="flex -space-x-2">
-                            <span className="text-2xl z-10">{agentA.emoji}</span>
-                            <span className="text-2xl">{agentB.emoji}</span>
+                            <span className="text-2xl z-10">{emojiA}</span>
+                            <span className="text-2xl">{emojiB}</span>
                         </div>
                         <div>
                             <h3 className="font-bold text-slate-800">
@@ -53,7 +56,7 @@ export function HistoryModal({ agentA, agentB, onClose }: HistoryModalProps) {
                     ) : (
                         history.map((line, idx) => {
                             const isAgentA = line.startsWith(agentA.name + ":");
-                            const speakerEmoji = isAgentA ? agentA.emoji : agentB.emoji;
+                            const speakerEmoji = isAgentA ? emojiA : emojiB;
                             const speakerName = isAgentA ? agentA.name : agentB.name;
                             const content = line.split(': ').slice(1).join(': ');
 
