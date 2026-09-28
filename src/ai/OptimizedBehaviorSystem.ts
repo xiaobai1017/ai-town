@@ -136,7 +136,7 @@ export class OptimizedBehaviorSystem {
         this._handleHunger(agent, time);
         
         // 处理购物
-        this._handleShopping(agent, time);
+        this._handleShopping(agent, time, agents);
         
         // 处理医疗
         this._handleMedical(agent, time);
@@ -316,8 +316,9 @@ export class OptimizedBehaviorSystem {
         }
     }
     
-    private _handleShopping(agent: OptimizedAgent, time: number) {
-        if (agent.state === 'SHOPPING') {
+    private _handleShopping(agent: OptimizedAgent, time: number, agents?: OptimizedAgent[]) {
+        const locAt = this._getLocationAt(agent.position);
+        if (agent.state === 'SHOPPING' && locAt?.name === 'Mall') {
             const totalWealth = agent.getTotalWealth();
             let shoppingCost = 0;
 
@@ -358,13 +359,13 @@ export class OptimizedBehaviorSystem {
             }
 
             agent.health = Math.min(100, agent.health + (shoppingCost > 0 ? 0.5 : 0.2));
-            const locAt = this._getLocationAt(agent.position);
             const desc = shoppingCost >= 15.0 ? 'Luxury Shopping' : (shoppingCost > 0 ? 'Mall Shopping' : 'Window Shopping');
 
             if (shoppingCost > 0 && hasPaid) {
-                if (locAt) {
-                    locAt.stats.revenue += shoppingCost;
-                    this._logBuildingTransaction(locAt, shoppingCost, `${desc} to ${agent.name}`, time);
+                const mall = this.cachedLocations.get('Mall') || this.world.locations.find(l => l.name === 'Mall');
+                if (mall) {
+                    mall.stats.revenue += shoppingCost;
+                    this._logBuildingTransaction(mall, shoppingCost, `${desc} from ${agent.name}`, time);
                 }
                 
                 agent.logTransaction(-shoppingCost, desc, 'expense', time);
@@ -388,6 +389,11 @@ export class OptimizedBehaviorSystem {
                     agent.conversation = "Had a pleasant stroll around the Mall!";
                     agent.conversationTTL = 40;
                 }
+            }
+        } else if (agent.state === 'SHOPPING' && locAt?.name !== 'Mall') {
+            const mall = this.cachedLocations.get('Mall') || this.world.locations.find(l => l.name === 'Mall');
+            if (mall && !agent.targetPosition && agents) {
+                this._ensureAtLocation(agent, agents.indexOf(agent), 'Mall', 'SHOPPING', agents);
             }
         } else {
             // 结束购物会话
@@ -720,7 +726,6 @@ export class OptimizedBehaviorSystem {
         const shoppingChance = isWealthy ? 0.3 : (totalWealth >= 5 ? 0.15 : 0.05);
         
         if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < shoppingChance) {
-            agent.state = 'SHOPPING';
             agent.conversation = isWealthy ? "Time to shop and increase my charm!" : "Going to browse the Mall!";
             agent.conversationTTL = 50;
             this._ensureAtLocation(agent, agentIndex, 'Mall', 'SHOPPING', allAgents);
@@ -734,7 +739,6 @@ export class OptimizedBehaviorSystem {
 
         if (isBankOpen && agent.cash >= depositThreshold && agent.hunger < 20 && agent.health > 90 &&
             Math.random() < depositChance && agent.state !== 'WORKING' && agent.state !== 'SLEEPING') {
-            agent.state = 'BANKING';
             agent.conversation = isWealthy ? "Need to manage my growing capital." : "Better deposit this extra cash.";
             agent.conversationTTL = 50;
             this._ensureAtLocation(agent, agentIndex, 'Bank', 'BANKING', allAgents);

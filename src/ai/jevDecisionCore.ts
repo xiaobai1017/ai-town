@@ -49,8 +49,8 @@ const DESCRIPTIONS: Record<string, string> = {
   WORK: 'Report to your designated workplace and perform professional duties during work hours to earn steady wages and maintain town services.',
   EAT: 'Have a hearty meal at the Restaurant to deeply relieve hunger and regain stamina, or enjoy fresh snacks at the Bakery.',
   SLEEP: 'Return home to sleep and recharge physical energy.',
-  SHOP: 'Visit the Mall to convert accumulated money into Charm points. DEADLY WARNING: Town decree dictates that the resident with the LOWEST CHARM on Day 15 will be EXECUTED! Reaching 100 Charm wins the Championship, while shopping escapes the execution danger zone.',
-  LIBRARY: 'Read books quietly at the Library for steady, low-cost intellectual study and cultural reflection (grants free Charm growth to help avoid bottom rank execution).',
+  SHOP: 'Visit the Mall to convert accumulated money into Charm. EFFICIENCY: HIGH (+1.0 to +4.5 Charm per trip, NO UPPER LIMIT up to 100!). Reaching 100 Charm wins the Championship, and shopping is the ONLY effective way to gain significant charm and escape the Day 15 lowest-charm execution decree.',
+  LIBRARY: 'Read books quietly at the Library for steady, low-cost study. EFFICIENCY: VERY LOW (~+0.1 Charm per session, HARD CAPPED AT 20 CHARM MAX). Once charm reaches 20, reading CANNOT grant any more charm and CANNOT win the 100-charm championship.',
   TREAT: 'Visit the Hospital to recover health and cure disease.',
   BANK: 'Visit the Bank to deposit surplus cash for interest, or take a loan if short on funds.',
   WANDER: 'Stroll pleasantly around the Park or town streets to relax and observe the community.',
@@ -251,14 +251,18 @@ export async function callJevBatch(
       }
     }
 
+    const efficiencyNotice = (availableTypes.has('SHOP') || availableTypes.has('LIBRARY'))
+      ? ` [CHARM EFFICIENCY: Mall Shopping has HIGH efficiency (+1.0 to +4.5 Charm/trip, NO UPPER LIMIT, unlocks 100-Charm Victory). Library reading has VERY LOW efficiency (~+0.1 Charm/session) and is HARD CAPPED AT 20 CHARM MAX. If Charm >= 20, reading gives ZERO charm gains, so Shopping at the Mall is the only viable path.]`
+      : '';
+
     let promptText: string;
     if (isNight) {
       promptText = `It is currently late night in AI Town (${hour}:00) and the weather is ${weatherMeta.nameEn} (${weatherMeta.emoji}). Resident ${agent.name} (${agent.role}) should rest or take essential care. Choose the best candidate action.`;
     } else if (isWorkShift) {
       if (isBottomPanic && (availableTypes.has('SHOP') || availableTypes.has('LIBRARY'))) {
-        promptText = `It is currently ${hour}:00 in AI Town. ${compSummary}SURVIVAL OVERRIDE: Day 15 execution decree has triggered intense panic! Resident ${agent.name} must prioritize raising charm right now (SHOP at the Mall or read at the LIBRARY) to escape the execution chopping block! Choose the best candidate action.`;
+        promptText = `It is currently ${hour}:00 in AI Town. ${compSummary}SURVIVAL OVERRIDE: Day 15 execution decree has triggered intense panic! Resident ${agent.name} must prioritize raising charm right now (SHOP at the Mall yields +1.0~+4.5 rapid charm; reading is capped at 20) to escape the execution chopping block! Choose the best candidate action.`;
       } else if (isUltraWealthy && availableTypes.has('SHOP')) {
-        promptText = `It is currently ${hour}:00 in AI Town. ${compSummary}VICTORY OBJECTIVE: Reaching 100 Charm is the ULTIMATE VICTORY CONDITION to win the AI Town championship! Resident ${agent.name} is extremely rich ($${totalWealth.toFixed(2)}) and already has ${Math.round(charm)}/100 Charm. They do NOT need meager hourly wages; their winning strategy is to visit the Mall (SHOP) to convert cash into Charm points to claim the championship trophy! Choose the best candidate action.`;
+        promptText = `It is currently ${hour}:00 in AI Town. ${compSummary}VICTORY OBJECTIVE: Reaching 100 Charm is the ULTIMATE VICTORY CONDITION to win the AI Town championship! Resident ${agent.name} is extremely rich ($${totalWealth.toFixed(2)}) and already has ${Math.round(charm)}/100 Charm. They do NOT need meager hourly wages; their winning strategy is to visit the Mall (SHOP) to convert cash into massive Charm points (+1.0~+4.5 per trip) to claim the championship trophy! Choose the best candidate action.`;
       } else {
         promptText = `It is currently ${hour}:00 (work shift) in AI Town and the weather is ${weatherMeta.nameEn}. As a dedicated ${agent.role}, resident ${agent.name} is on duty and should diligently perform their professional duties at their workplace to earn wages, unless urgently hungry or sick. Choose the best candidate action.`;
       }
@@ -266,11 +270,11 @@ export async function callJevBatch(
       promptText = `It is currently 12:00 noon (lunch break) in AI Town. Resident ${agent.name} (${agent.role}) should take a break from work to have lunch and replenish stamina. Choose the best candidate action.`;
     } else if (isEveningLeisure) {
       if (isBottomPanic && (availableTypes.has('SHOP') || availableTypes.has('LIBRARY'))) {
-        promptText = `It is currently ${hour}:00 (evening leisure) in AI Town. ${compSummary}SURVIVAL OVERRIDE: Day 15 execution decree has created a deadly panic! Resident ${agent.name} must prioritize raising charm right now (SHOP at the Mall or read at the LIBRARY) to escape execution! Choose the best candidate action.`;
+        promptText = `It is currently ${hour}:00 (evening leisure) in AI Town. ${compSummary}SURVIVAL OVERRIDE: Day 15 execution decree has created a deadly panic! Resident ${agent.name} must prioritize raising charm right now (SHOP at the Mall is high efficiency +1.0~+4.5; reading is capped at 20) to escape execution! Choose the best candidate action.`;
       } else if (isUltraWealthy && availableTypes.has('SHOP')) {
-        promptText = `It is currently ${hour}:00 (evening leisure) in AI Town. ${compSummary}VICTORY OBJECTIVE: Reaching 100 Charm is the ULTIMATE VICTORY CONDITION to win the simulation! Resident ${agent.name} has massive wealth ($${totalWealth.toFixed(2)}) and currently has ${Math.round(charm)}/100 Charm. Hoarding extra money serves no purpose—they should aggressively spend at the Mall (SHOP) to surge their Charm toward 100 and win the Town Championship! Choose the best candidate action.`;
+        promptText = `It is currently ${hour}:00 (evening leisure) in AI Town. ${compSummary}VICTORY OBJECTIVE: Reaching 100 Charm is the ULTIMATE VICTORY CONDITION to win the simulation! Resident ${agent.name} has massive wealth ($${totalWealth.toFixed(2)}) and currently has ${Math.round(charm)}/100 Charm. Hoarding extra money serves no purpose—they should aggressively spend at the Mall (SHOP, +1.0~+4.5 Charm/trip) to surge their Charm toward 100 and win the Town Championship! Choose the best candidate action.`;
       } else if (isWealthyAndSafe) {
-        promptText = `It is currently ${hour}:00 (evening leisure, after work) in AI Town. ${compSummary}Resident ${agent.name} (${agent.role}) has completed their workday with healthy savings ($${totalWealth.toFixed(2)}). Reaching 100 Charm is the town victory goal. They should enjoy their evening: consider treating themselves at the Mall to boost charm and social prestige, visit the library, or relax in the park. Choose the best candidate action.`;
+        promptText = `It is currently ${hour}:00 (evening leisure, after work) in AI Town. ${compSummary}Resident ${agent.name} (${agent.role}) has completed their workday with healthy savings ($${totalWealth.toFixed(2)}). Reaching 100 Charm is the town victory goal. They should enjoy their evening: treat themselves at the Mall to boost charm (+1.0~+4.5) and social prestige, visit the library (capped at 20), or relax in the park. Choose the best candidate action.`;
       } else {
         promptText = `It is currently ${hour}:00 (evening leisure, after work) in AI Town. Resident ${agent.name} (${agent.role}) has completed their workday and can enjoy evening activities such as visiting the library, strolling the park, or having dinner. Choose the best candidate action.`;
       }
@@ -278,6 +282,10 @@ export async function callJevBatch(
       promptText = `It is currently ${hour}:00 (early morning) in AI Town. Resident ${agent.name} (${agent.role}) should prepare for the day with breakfast or a light stroll before the 8:00 AM work shift begins. Choose the best candidate action.`;
     } else {
       promptText = `The weather in AI Town is currently ${weatherMeta.nameEn} (${weatherMeta.emoji}: ${weatherMeta.descriptionEn}). ${compSummary}Choose the best candidate action for resident ${agent.name} (${agent.role}) balancing health, hunger, financial security, charm (100 Charm wins the championship!), and current weather.`;
+    }
+
+    if (efficiencyNotice) {
+      promptText += efficiencyNotice;
     }
 
     const qKey = `action_${agent.id}`;

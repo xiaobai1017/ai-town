@@ -233,7 +233,8 @@ export class BehaviorSystem {
             }
 
             if (agent.state === 'READING' && locAt?.name === 'Library') {
-                agent.increaseLibraryCharm(0.03, time);
+                // 图书馆阅读：大幅降低单 tick 增长（0.003），且受 20 魅力上限限制
+                agent.increaseLibraryCharm(0.003, time);
                 // 自然阅读周期：读完一卷书约 30~45 分钟（每 tick 约 2.5% 概率读完），或饥饿上升时主动合上书本休息
                 if (Math.random() < 0.025 || agent.hunger > 55) {
                     agent.state = 'IDLE';
@@ -244,15 +245,16 @@ export class BehaviorSystem {
                     }
                 }
             } else if (agent.state === 'WORKING' && agent.role === 'Librarian' && locAt?.name === 'Library') {
-                // 图书管理员 Bob 沉浸在书香中，工作中同样获得图书知识与名望成长
-                agent.increaseLibraryCharm(0.015, time);
+                // 图书管理员 Bob 工作时轻微获得素养，每 tick 仅 0.001，受 20 上限封顶
+                agent.increaseLibraryCharm(0.001, time);
             } else if (agent.state === 'WORKING' && agent.role === 'Mayor' && locAt?.name === 'Library') {
-                // 市长 Charlie 办公接待居民事务，增进小镇治理声望魅力
-                agent.increaseLibraryCharm(0.015, time);
+                // 市长 Charlie 办公接待事务，每 tick 仅 0.001，受 20 上限封顶（绝不允许靠工作打满 100 魅力）
+                agent.increaseLibraryCharm(0.001, time);
             }
 
             // Shopping logic: Mall shopping without minimum spending (more spent = more charm)
-            if (agent.state === 'SHOPPING') {
+            // 严格限定小人必须真正到达商场建筑内部（locAt?.name === 'Mall'），才触发商场扣款与流水记录，绝不允许在图书馆等其他建筑中误记流水
+            if (agent.state === 'SHOPPING' && locAt?.name === 'Mall') {
                 // Charge once per shopping session
                 if (!agent.sessionFinance || agent.sessionFinance.type !== 'expense' || !agent.sessionFinance.description.includes('Shopping')) {
                     const hour = Math.floor(time / 60) % 24;
@@ -301,10 +303,11 @@ export class BehaviorSystem {
                     const desc = shoppingCost >= 15.0 ? 'Luxury Shopping' : (shoppingCost > 0 ? 'Mall Shopping' : 'Window Shopping');
 
                     if (shoppingCost > 0 && hasPaid) {
-                        if (locAt) {
-                            locAt.stats.revenue += shoppingCost;
+                        const mall = this.world.locations.find(l => l.name === 'Mall');
+                        if (mall) {
+                            mall.stats.revenue += shoppingCost;
                             // 立即记录到商场流水账本，无论何时查看商场面板均有清晰明细
-                            this.logBuildingTransaction(locAt, shoppingCost, `${desc} from ${agent.name}`, time);
+                            this.logBuildingTransaction(mall, shoppingCost, `${desc} from ${agent.name}`, time);
                         }
                         // 立即记录到居民个人账本
                         agent.logTransaction(-shoppingCost, desc, 'expense', time);
@@ -336,6 +339,12 @@ export class BehaviorSystem {
                             agent.moveTo({ x: locAt.entry.x, y: locAt.entry.y + 1 }, this.world);
                         }
                     }
+                }
+            } else if (agent.state === 'SHOPPING' && locAt?.name !== 'Mall') {
+                // 如果小人处于 SHOPPING 但尚未到达商场（在途中），确保向商场移动
+                const mall = this.world.locations.find(l => l.name === 'Mall');
+                if (mall && !agent.targetPosition) {
+                    this.ensureAtLocation(agent, index, 'Mall', 'SHOPPING', agents);
                 }
             } else {
                 if (agent.sessionFinance && agent.sessionFinance.type === 'expense' && agent.sessionFinance.description.includes('Shopping')) {
@@ -932,7 +941,6 @@ export class BehaviorSystem {
         const isCharmSeeker = finances.canShop && hasBasicNeedsMet && agent.charm < 100;
         const shoppingChance = isWealthy ? 0.3 : (finances.disposableFunds > 0 ? 0.15 : 0.05);
         if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < shoppingChance) {
-            agent.state = 'SHOPPING';
             agent.conversation = isWealthy ? "Time to shop and increase my charm!" : "Going to browse the Mall!";
             agent.conversationTTL = 50;
             this.recordLocalDecision(agent, 'SHOP', 'Mall', isWealthy ? `手头资产充裕且生理需求满足，前往商场选购品质好物提升个人魅力。` : `闲暇时光前往商场逛街选购，提升个人品味与魅力。`, time);
@@ -944,7 +952,6 @@ export class BehaviorSystem {
         const depositThreshold = isWealthy ? 50 : 100;
         if (isBankOpen && finances.shouldBank && agent.cash >= depositThreshold && agent.hunger < 20 && agent.health > 90 &&
             agent.state !== 'WORKING' && agent.state !== 'SLEEPING') {
-            agent.state = 'BANKING';
             agent.conversation = isWealthy ? "Need to manage my growing capital." : "Better deposit this extra cash.";
             agent.conversationTTL = 50;
             this.recordLocalDecision(agent, 'BANK', 'Bank', isWealthy ? `资产不断积累，前往银行存入流动多余资金。` : `随身现金较多，前往银行存款以保障资金安全。`, time);

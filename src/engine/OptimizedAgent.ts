@@ -312,8 +312,12 @@ export class OptimizedAgent {
         this.lastShoppingAmount = shoppingAmount;
     }
 
-    increaseLibraryCharm(amount: number = 0.03) {
-        this.charm = Math.min(100, Math.round((this.charm + amount) * 100) / 100);
+    increaseLibraryCharm(amount: number = 0.003) {
+        const LIBRARY_CHARM_CAP = 20.0;
+        if (this.charm >= LIBRARY_CHARM_CAP) return;
+        const maxGain = LIBRARY_CHARM_CAP - this.charm;
+        const applied = Math.min(amount, maxGain);
+        this.charm = Math.min(LIBRARY_CHARM_CAP, Math.round((this.charm + applied) * 100) / 100);
         this.lastShoppingAmount = 0;
     }
     

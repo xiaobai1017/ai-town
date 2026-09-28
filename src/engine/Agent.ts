@@ -306,11 +306,17 @@ export class Agent {
         });
     }
 
-    /** Low-cost charm growth from reading at the Library. */
-    increaseLibraryCharm(amount: number = 0.03, timestamp: number = 0) {
+    /** Low-cost charm growth from reading at the Library, strictly capped at 20.0 */
+    increaseLibraryCharm(amount: number = 0.003, timestamp: number = 0) {
+        const LIBRARY_CHARM_CAP = 20.0; // 图书馆知识素养上限为 20 分，20分之后必须依靠商场消费方可突破
         const charmBefore = this.charm;
-        const applied = Math.round(Math.min(amount, 100 - charmBefore) * 100) / 100;
-        this.charm = Math.min(100, Math.round((charmBefore + amount) * 100) / 100);
+        if (charmBefore >= LIBRARY_CHARM_CAP) return;
+
+        const maxGain = LIBRARY_CHARM_CAP - charmBefore;
+        const applied = Math.round(Math.min(amount, maxGain) * 100) / 100;
+        if (applied <= 0) return;
+
+        this.charm = Math.min(LIBRARY_CHARM_CAP, Math.round((charmBefore + applied) * 100) / 100);
         this.lastShoppingAmount = 0;
 
         pushCharmEvent(this.charmHistory, {

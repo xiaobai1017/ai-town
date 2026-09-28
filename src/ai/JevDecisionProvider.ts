@@ -282,7 +282,8 @@ export function buildJevContext(
   const totalWealth = (agent.cash ?? 0) + (agent.bankBalance ?? 0);
   const canPursueCharmSafely = agent.health >= 45 && agent.hunger <= 65 &&
     finances.canShop && agent.charm < 100;
-  const canReadSafely = agent.health >= 50 && agent.hunger <= 60 && agent.charm < 100;
+  // 图书馆素养魅力上限封顶为 20 点（0~20基础素养，无法通过读书达到100获胜）；已达20者不再推荐阅读增加魅力
+  const canReadSafely = agent.health >= 50 && agent.hunger <= 60 && agent.charm < 20;
   const isChampionSprint = totalWealth >= 100 && agent.charm < 100 && finances.canShop;
 
   const isNight = hour >= 22 || hour < 7;
