@@ -294,30 +294,30 @@ export class OptimizedAgent {
         }
     }
 
-    // 优化：平滑长线魅力成长模型，兼顾多花多得魅力与多日长线竞争
+    // 优化：重构商场消费魅力成长模型：赋予清晰可观的正向反馈，促使在 10~15 天内拉开差距决出胜负
     increaseCharm(shoppingAmount: number) {
-        // 采用边际效益递减函数，单次高消费获得 2~5 点魅力，单次封顶 6.0 魅力
-        const rawCharm = shoppingAmount > 0 ? (Math.pow(shoppingAmount, 0.42) * 0.42) : 0;
-        const baseCharmGain = Math.round(Math.min(6.0, rawCharm) * 100) / 100;
+        // $1 -> 1.9, $5 -> 3.2, $15 -> 5.0, $50 -> 8.8, $80 -> 11.0, $150 -> 15.2, $300 -> 21.7
+        const rawCharm = shoppingAmount > 0 ? (Math.pow(shoppingAmount, 0.55) * 0.9 + 1.0) : 0;
+        const baseCharmGain = Math.round(Math.min(22.0, rawCharm) * 100) / 100;
         
         let friendCount = 0;
         for (const intimacy of Object.values(this.relationships)) {
             if (intimacy >= 50) friendCount++;
         }
         
-        const friendBonus = Math.round(Math.min(0.8, friendCount * 0.1) * 100) / 100;
+        const friendBonus = Math.round(Math.min(1.5, friendCount * 0.2) * 100) / 100;
         const totalCharmGain = baseCharmGain + friendBonus;
         
         this.charm = Math.min(100, Math.round((this.charm + totalCharmGain) * 100) / 100);
         this.lastShoppingAmount = shoppingAmount;
     }
 
-    increaseLibraryCharm(amount: number = 0.003) {
+    increaseLibraryCharm(amount: number = 0.005) {
         const LIBRARY_CHARM_CAP = 20.0;
         if (this.charm >= LIBRARY_CHARM_CAP) return;
         const maxGain = LIBRARY_CHARM_CAP - this.charm;
         const applied = Math.min(amount, maxGain);
-        this.charm = Math.min(LIBRARY_CHARM_CAP, Math.round((this.charm + applied) * 100) / 100);
+        this.charm = Math.min(LIBRARY_CHARM_CAP, Math.round((this.charm + applied) * 1000) / 1000);
         this.lastShoppingAmount = 0;
     }
     

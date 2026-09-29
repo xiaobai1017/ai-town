@@ -55,6 +55,8 @@ export class OptimizedBehaviorSystem {
     
     // 缓存常用位置，避免重复查找
     private cachedLocations: Map<string, Location> = new Map();
+    private executedDecreeDays = new Set<number>();
+    private decreeInitialized = false;
 
     constructor(world: OptimizedWorld) {
         this.world = world;
@@ -74,6 +76,9 @@ export class OptimizedBehaviorSystem {
     }
 
     update(agents: OptimizedAgent[], time: number) {
+        // 周期性全镇末位处决令执行检测（第 15 天起，每 5 天一轮直到决出 100 魅力胜者）
+        this._checkDecreeExecution(time, agents);
+
         // 优化：批量处理警察和罪犯
         this._handleLawEnforcement(agents, time);
         
@@ -720,13 +725,31 @@ export class OptimizedBehaviorSystem {
         }
 
         // 魅力系统：商场不设最低消费，满足基本生存即可根据预算消费或逛街
-        const isWealthy = totalWealth >= 50 * this.priceMultiplier;
-        const hasBasicNeedsMet = agent.hunger < 45 && agent.health > 70;
+        // 受到全镇末位处决令威胁或手头有余钱的居民，均应积极前往商场提升魅力
+        const aliveResidents = allAgents.filter(a => a.state !== 'DEAD');
+        const sortedAlive = [...aliveResidents].sort((a, b) => a.charm - b.charm);
+        const isDeadLastLocal = sortedAlive.length > 1 && sortedAlive[0]?.id === agent.id;
+        const isBottomDangerLocal = sortedAlive.length > 1 && (sortedAlive[0]?.id === agent.id || sortedAlive[1]?.id === agent.id);
+
+        const isWealthy = totalWealth >= 25 * this.priceMultiplier || agent.getTotalWealth() >= 30;
+        const hasBasicNeedsMet = agent.hunger < 70 && agent.health > 45;
         const isCharmSeeker = hasBasicNeedsMet && agent.charm < CONSTANTS.CHARM_MAX;
-        const shoppingChance = isWealthy ? 0.3 : (totalWealth >= 5 ? 0.15 : 0.05);
+
+        let shoppingChance = 0.08;
+        if (isDeadLastLocal) {
+            shoppingChance = 0.75; // 垫底者求生欲爆发，高达 75% 几率去商场疯狂消费
+        } else if (isBottomDangerLocal) {
+            shoppingChance = 0.50; // 濒临倒数第二，50% 几率去商场拉开差距
+        } else if (isWealthy) {
+            shoppingChance = 0.35; // 积蓄较多者积极消费
+        } else if (totalWealth >= 5) {
+            shoppingChance = 0.20;
+        }
         
         if (isCharmSeeker && agent.state !== 'WORKING' && agent.state !== 'SLEEPING' && Math.random() < shoppingChance) {
-            agent.conversation = isWealthy ? "Time to shop and increase my charm!" : "Going to browse the Mall!";
+            agent.conversation = isDeadLastLocal 
+                ? "I'm in last place! I must shop at the Mall to raise my charm!" 
+                : (isWealthy ? "Time to shop and increase my charm!" : "Going to browse the Mall!");
             agent.conversationTTL = 50;
             this._ensureAtLocation(agent, agentIndex, 'Mall', 'SHOPPING', allAgents);
             return;
@@ -816,11 +839,16 @@ export class OptimizedBehaviorSystem {
 
     private _getLeisureLocation(index: number, agent?: OptimizedAgent): string {
         const totalWealth = agent ? agent.getTotalWealth() : 0;
-        const isWealthy = totalWealth > CONSTANTS.WEALTHY_AGENT_MIN_THRESHOLD * this.priceMultiplier;
+        const isWealthy = totalWealth > 25 * this.priceMultiplier;
+
+        // 如果居民魅力低于 50 且手头有积蓄，极大倾向前往商场提升魅力
+        if (agent && agent.charm < 50 && totalWealth >= 5 && Math.random() < 0.7) {
+            return 'Mall';
+        }
+        if (isWealthy && Math.random() < 0.6) return 'Mall';
+        if (Math.random() < 0.3) return 'Mall';
 
         const locations = ['Park', 'Library', 'Bakery', 'Restaurant'];
-        if (isWealthy && Math.random() < 0.7) return 'Mall'; // 富人喜欢商场
-
         return locations[index % locations.length];
     }
     
@@ -934,6 +962,63 @@ export class OptimizedBehaviorSystem {
         loc.stats.transactions.unshift({ amount, description, timestamp });
         if (loc.stats.transactions.length > 100) {
             loc.stats.transactions.pop();
+        }
+    }
+
+    /**
+     * 周期性全镇末位处决令闭环：
+     * 从第 15 天起，每 5 天（第 15, 20, 25, 30, 35... 天）夜晚 22:00 执行一轮，
+     * 若仍无人达到 100 魅力胜出，且幸存者多于 1 人，严格执行法令淘汰处决全镇魅力值最低的居民（立墓碑 🪦），
+     * 破除死局，使处决威胁化为持续悬顶之剑！
+     */
+    private _checkDecreeExecution(time: number, agents: OptimizedAgent[]) {
+        const currentDay = Math.floor(time / 1440) + 1;
+
+        if (!this.decreeInitialized) {
+            this.decreeInitialized = true;
+            // 初始化时，将已过期的历史处决节点标记为已处理，防止读档或重载时瞬时连环处决多名居民
+            for (let d = 15; d <= currentDay; d += 5) {
+                const deadline = (d - 1) * 1440 + 22 * 60;
+                if (time >= deadline) {
+                    this.executedDecreeDays.add(d);
+                }
+            }
+        }
+
+        for (let roundDay = 15; roundDay <= currentDay; roundDay += 5) {
+            const roundDeadline = (roundDay - 1) * 1440 + 22 * 60;
+            if (time >= roundDeadline && !this.executedDecreeDays.has(roundDay)) {
+                this.executedDecreeDays.add(roundDay);
+                const aliveAgents = agents.filter(a => a.state !== 'DEAD');
+                if (aliveAgents.length > 1) {
+                    const hasWinner = aliveAgents.some(a => a.charm >= 100);
+                    if (!hasWinner) {
+                        aliveAgents.sort((a, b) => a.charm - b.charm || a.getTotalWealth() - b.getTotalWealth());
+                        const victim = aliveAgents[0];
+                        if (victim) {
+                            victim.state = 'DEAD';
+                            victim.emoji = '🪦';
+                            victim.path = [];
+                            victim.targetPosition = null;
+                            (victim as any).arrivalState = undefined;
+                            victim.deathTime = time;
+                            victim.deathCause = `Day ${roundDay} Execution (Lowest Charm)`;
+                            victim.conversation = `Decree executed: eliminated for lowest charm (${victim.charm.toFixed(1)})...`;
+                            victim.conversationTTL = 999999;
+                            console.log(`[EXECUTION] Day ${roundDay} decree executed: ${victim.name} had lowest charm (${victim.charm.toFixed(1)}) and was executed.`);
+
+                            const roundNum = Math.floor((roundDay - 15) / 5) + 1;
+                            const nextDay = roundDay + 5;
+                            agents.forEach(other => {
+                                if (other.id !== victim.id && other.state !== 'DEAD') {
+                                    other.conversation = `Round ${roundNum} executed! ${victim.name} died for lowest charm! Next elimination Day ${nextDay}!`;
+                                    other.conversationTTL = 80;
+                                }
+                            });
+                        }
+                    }
+                }
+            }
         }
     }
 }

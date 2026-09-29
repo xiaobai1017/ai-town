@@ -269,17 +269,16 @@ export class Agent {
         }
     }
 
-    // Increase charm based on shopping amount (diminishing returns, encouraging long-term competition over many days)
+    // Increase charm based on shopping amount (diminishing returns, encouraging competitive sprints)
     increaseCharm(shoppingAmount: number, timestamp: number = 0) {
-        // 平滑长线魅力成长模型：兼顾“多花多得魅力”与“游戏多日竞逐”
-        // 采用边际效益递减函数，单次高消费获得 2~5 点魅力，单次封顶 6.0 魅力
-        // $1 -> 0.42, $5 -> 0.83, $15 -> 1.31, $50 -> 2.17, $80 -> 2.65, $150 -> 3.44, $300 -> 4.60
-        const rawCharm = shoppingAmount > 0 ? (Math.pow(shoppingAmount, 0.42) * 0.42) : 0;
-        const baseCharmGain = Math.round(Math.min(6.0, rawCharm) * 100) / 100;
+        // 重构商场消费魅力成长模型：赋予清晰可观的正向反馈，促使在 10~15 天内拉开差距决出胜负
+        // $1 -> 1.9, $5 -> 3.2, $15 -> 5.0, $50 -> 8.8, $80 -> 11.0, $150 -> 15.2, $300 -> 21.7
+        const rawCharm = shoppingAmount > 0 ? (Math.pow(shoppingAmount, 0.55) * 0.9 + 1.0) : 0;
+        const baseCharmGain = Math.round(Math.min(22.0, rawCharm) * 100) / 100;
 
-        // 好友社交加成：朋友多可带来额外社交声望，每个好友贡献 0.1 魅力加成，上限 0.8
+        // 好友社交加成：朋友多可带来额外社交声望，每个好友贡献 0.2 魅力加成，上限 1.5
         const friendCount = Object.values(this.relationships).filter(intimacy => intimacy >= 50).length;
-        const friendBonusNominal = Math.round(Math.min(0.8, friendCount * 0.1) * 100) / 100;
+        const friendBonusNominal = Math.round(Math.min(1.5, friendCount * 0.2) * 100) / 100;
 
         // Respect the 100 cap so the ledger reflects what was actually applied
         const charmBefore = this.charm;
@@ -307,16 +306,17 @@ export class Agent {
     }
 
     /** Low-cost charm growth from reading at the Library, strictly capped at 20.0 */
-    increaseLibraryCharm(amount: number = 0.003, timestamp: number = 0) {
+    increaseLibraryCharm(amount: number = 0.005, timestamp: number = 0) {
         const LIBRARY_CHARM_CAP = 20.0; // 图书馆知识素养上限为 20 分，20分之后必须依靠商场消费方可突破
         const charmBefore = this.charm;
         if (charmBefore >= LIBRARY_CHARM_CAP) return;
 
         const maxGain = LIBRARY_CHARM_CAP - charmBefore;
-        const applied = Math.round(Math.min(amount, maxGain) * 100) / 100;
+        const applied = Math.min(amount, maxGain);
         if (applied <= 0) return;
 
-        this.charm = Math.min(LIBRARY_CHARM_CAP, Math.round((charmBefore + applied) * 100) / 100);
+        // 避免浮点两位小数截断导致微小每 tick 增量被归零
+        this.charm = Math.min(LIBRARY_CHARM_CAP, Math.round((charmBefore + applied) * 1000) / 1000);
         this.lastShoppingAmount = 0;
 
         pushCharmEvent(this.charmHistory, {

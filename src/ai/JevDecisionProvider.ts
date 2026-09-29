@@ -168,6 +168,14 @@ export interface CharmCompetitor {
   isSelf?: boolean;
 }
 
+export interface ExecutedVictimInfo {
+  name: string;
+  charm: number;
+  deathTime?: number;
+  deathCause?: string;
+  day?: number;
+}
+
 export interface CharmCompetitionInfo {
   leaderboard: CharmCompetitor[];
   myRank: number;
@@ -176,10 +184,15 @@ export interface CharmCompetitionInfo {
   gapToLeader: number;
   runnerUp?: { name: string; charm: number };
   currentDay: number;
+  nextEliminationDay: number;
   daysRemaining: number;
+  daysToNextElimination: number;
+  isDay15Passed: boolean;
   isBottomDanger: boolean;
+  isDeadLast: boolean;
   lowestRanked: { name: string; charm: number; role: string };
   gapToEscapeBottom: number;
+  executedVictims: ExecutedVictimInfo[];
 }
 
 export interface JevDecisionContext {
@@ -248,9 +261,34 @@ export function buildJevContext(
     const leader = sorted[0] || agent;
     const runnerUp = sorted.length > 1 ? sorted[1] : undefined;
 
+    const executedVictims: ExecutedVictimInfo[] = (allAgents || [])
+      .filter(a => a.state === 'DEAD' && (
+        a.deathCause?.toLowerCase().includes('execution') ||
+        a.deathCause?.toLowerCase().includes('charm') ||
+        a.deathCause?.toLowerCase().includes('decree')
+      ))
+      .map(a => ({
+        name: a.name,
+        charm: Math.round(a.charm * 10) / 10,
+        deathTime: a.deathTime,
+        deathCause: a.deathCause,
+        day: a.deathTime ? Math.floor(a.deathTime / 1440) + 1 : undefined
+      }));
+
     const currentDay = Math.floor(time / 1440) + 1;
-    const daysRemaining = Math.max(1, 15 - Math.floor(time / 1440));
+    let nextEliminationDay = 15;
+    while (nextEliminationDay <= currentDay) {
+      const deadline = (nextEliminationDay - 1) * 1440 + 22 * 60;
+      if (time < deadline) break;
+      nextEliminationDay += 5;
+    }
+    const nextEliminationTime = (nextEliminationDay - 1) * 1440 + 22 * 60;
+    const minutesToNext = Math.max(0, nextEliminationTime - time);
+    const daysToNextElimination = Math.max(1, Math.ceil(minutesToNext / 1440));
+    const daysRemaining = daysToNextElimination;
+    const isDay15Passed = currentDay > 15;
     const lowest = sorted[sorted.length - 1] || agent;
+    const isDeadLast = sorted.length > 1 && myRank === sorted.length;
     const isBottomDanger = sorted.length > 1 && myRank >= sorted.length - 1;
     const nextAboveLowest = sorted.length > 1 ? sorted[sorted.length - 2] : lowest;
     const gapToEscapeBottom = myRank === sorted.length 
@@ -267,23 +305,29 @@ export function buildJevContext(
         : Math.round((leader.charm - agent.charm) * 10) / 10,
       runnerUp: runnerUp ? { name: runnerUp.name, charm: Math.round(runnerUp.charm * 10) / 10 } : undefined,
       currentDay,
+      nextEliminationDay,
       daysRemaining,
+      daysToNextElimination,
+      isDay15Passed,
       isBottomDanger,
+      isDeadLast,
       lowestRanked: { name: lowest.name, charm: Math.round(lowest.charm * 10) / 10, role: lowest.role },
-      gapToEscapeBottom
+      gapToEscapeBottom,
+      executedVictims
     };
   }
 
   const isBottomDanger = competition?.isBottomDanger ?? false;
+  const isDeadLast = competition?.isDeadLast ?? false;
   const healthFloor = 50;
   const hungerCeiling = 65;
   const hour = Math.floor(time / 60) % 24;
   const finances = planFinances(agent, priceMultiplier, hour);
   const totalWealth = (agent.cash ?? 0) + (agent.bankBalance ?? 0);
-  const canPursueCharmSafely = agent.health >= 45 && agent.hunger <= 65 &&
-    finances.canShop && agent.charm < 100;
+  const canPursueCharmSafely = agent.health >= 40 && agent.hunger <= 75 &&
+    (finances.canShop || totalWealth >= 1.0) && agent.charm < 100;
   // 图书馆素养魅力上限封顶为 20 点（0~20基础素养，无法通过读书达到100获胜）；已达20者不再推荐阅读增加魅力
-  const canReadSafely = agent.health >= 50 && agent.hunger <= 60 && agent.charm < 20;
+  const canReadSafely = agent.health >= 45 && agent.hunger <= 65 && agent.charm < 20;
   const isChampionSprint = totalWealth >= 100 && agent.charm < 100 && finances.canShop;
 
   const isNight = hour >= 22 || hour < 7;
@@ -318,21 +362,17 @@ export function buildJevContext(
       // 1. 上下文工作时段 (8:00~12:00, 13:00~18:00)：以坚守工作岗位赚取薪资为主
       candidates.push({ type: 'WORK', location: workLocation(agent) });
 
-      // 富豪冲刺：若资产丰厚 ($100+) 且处于下午时段 (14:00~18:00)，无需为了微薄工资苦守工位，提供商场消费候选冲刺 100 魅力总冠军
-      if (isChampionSprint && hour >= 14 && canPursueCharmSafely) {
+      // 商场消费提升魅力（SHOP）：只要资金允许且生理安全，全天日间均提供商场消费候选冲刺 100 魅力总冠军或拉开差距摆脱处决
+      if (canPursueCharmSafely && !candidates.some(c => c.type === 'SHOP')) {
         candidates.push({ type: 'SHOP', location: 'Mall' });
       }
 
-      // 处决危机自救：若处于倒数垫底危险区，下午时段允许去商场购物或去图书馆读书自救，摆脱第15天处决威胁
-      if (isBottomDanger && hour >= 14 && agent.health >= 50 && agent.hunger <= 65) {
-        if (canPursueCharmSafely && !candidates.some(c => c.type === 'SHOP')) {
-          candidates.push({ type: 'SHOP', location: 'Mall' });
-        } else if (canReadSafely && !candidates.some(c => c.type === 'LIBRARY')) {
-          candidates.push({ type: 'LIBRARY', location: 'Library' });
-        }
+      // 处决危机自救：倒数危险区居民若资金较少，亦可去图书馆读书补充素养（20分封顶）
+      if (isBottomDanger && canReadSafely && !candidates.some(c => c.type === 'LIBRARY')) {
+        candidates.push({ type: 'LIBRARY', location: 'Library' });
       }
 
-      // 工作中若明显饥饿提供就餐
+      // 工作中若有饥饿感 (hunger >= 40) 提供就餐，防止挨饿到 80 触发系统紧急兜底
       if (agent.hunger >= 40) {
         candidates.push({ type: 'EAT', location: 'Restaurant' });
       }
@@ -342,8 +382,11 @@ export function buildJevContext(
       }
       candidates.push({ type: 'WAIT' });
     } else if (isLunchBreak) {
-      // 2. 午餐休息时段 (12:00 ~ 13:00)：就餐休整补充能量
+      // 2. 午餐休息时段 (12:00 ~ 13:00)：就餐休整补充能量，或前往商场购物冲刺
       candidates.push({ type: 'EAT', location: agent.role === 'Baker' ? 'Bakery' : 'Restaurant' });
+      if (canPursueCharmSafely && !candidates.some(c => c.type === 'SHOP')) {
+        candidates.push({ type: 'SHOP', location: 'Mall' });
+      }
       if (weather !== 'STORMY') {
         candidates.push({ type: 'WANDER', location: 'Park' });
       }
@@ -378,6 +421,9 @@ export function buildJevContext(
       if (agent.hunger >= 20) {
         candidates.push({ type: 'EAT', location: 'Bakery' });
       }
+      if ((isBottomDanger || isDeadLast) && canPursueCharmSafely) {
+        candidates.push({ type: 'SHOP', location: 'Mall' });
+      }
       candidates.push({ type: 'WAIT' });
     }
 
@@ -408,23 +454,25 @@ export function buildJevContext(
 
   // 动态确定决策优先级
   let priority: JevDecisionContext['objective']['priority'];
-  if (agent.health < 45 || agent.hunger > 75) {
+  if (agent.health < 35 || agent.hunger >= 80) {
     priority = 'health_and_survival';
   } else if (isNight) {
     priority = 'night_rest_and_recovery';
-  } else if (isBottomDanger && (hour >= 14 && hour < 21) && agent.health >= 50 && agent.hunger <= 65) {
-    // 处决危机恐慌：倒数垫底面临第 15 天处决灭顶之灾，求生欲爆发全力自救
+  } else if ((isBottomDanger || isDeadLast) && hour >= 8 && hour < 21 && agent.health >= 40 && agent.hunger <= 75) {
+    // 处决危机恐慌：面临周期性末位处决灭顶之灾，求生欲爆发全力自救！
     priority = 'escape_execution_panic';
-  } else if (isChampionSprint && (hour >= 14 && hour < 21) && agent.health >= 50 && agent.hunger <= 60) {
+  } else if (isChampionSprint && hour >= 8 && hour < 21 && agent.health >= 40 && agent.hunger <= 70) {
     // 资产丰厚冲刺期：将金钱转化为魅力赢取小镇总冠军
     priority = 'win_championship_sprint';
+  } else if (totalWealth >= 20 && agent.charm < 100 && (hour >= 12 && hour < 21) && agent.health >= 45 && agent.hunger <= 70) {
+    priority = 'enjoy_wealth_and_elevate_charm';
   } else if ((hour >= 8 && hour < 12) || (hour >= 13 && hour < 18)) {
     priority = 'work_duty_and_earnings';
   } else if (hour >= 12 && hour < 13) {
     priority = 'lunch_break_replenish';
   } else {
     // 傍晚休闲时段 (18:00 ~ 22:00)
-    const isFinanciallySecure = (agent.cash + agent.bankBalance) >= 25 && finances.disposableFunds > 0;
+    const isFinanciallySecure = (agent.cash + agent.bankBalance) >= 15 && finances.disposableFunds > 0;
     priority = isFinanciallySecure ? 'enjoy_wealth_and_elevate_charm' : 'evening_leisure_and_study';
   }
 

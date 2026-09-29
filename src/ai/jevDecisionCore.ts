@@ -47,10 +47,10 @@ const defaultClient = envApiKey
 
 const DESCRIPTIONS: Record<string, string> = {
   WORK: 'Report to your designated workplace and perform professional duties during work hours to earn steady wages and maintain town services.',
-  EAT: 'Have a hearty meal at the Restaurant to deeply relieve hunger and regain stamina, or enjoy fresh snacks at the Bakery.',
+  EAT: 'Have a meal at the Restaurant or Bakery to relieve hunger and regain health. Note: Regular dining maintains stamina, but only extreme starvation (hunger >= 75) is critical.',
   SLEEP: 'Return home to sleep and recharge physical energy.',
-  SHOP: 'Visit the Mall to convert accumulated money into Charm. EFFICIENCY: HIGH (+1.0 to +4.5 Charm per trip, NO UPPER LIMIT up to 100!). Reaching 100 Charm wins the Championship, and shopping is the ONLY effective way to gain significant charm and escape the Day 15 lowest-charm execution decree.',
-  LIBRARY: 'Read books quietly at the Library for steady, low-cost study. EFFICIENCY: VERY LOW (~+0.1 Charm per session, HARD CAPPED AT 20 CHARM MAX). Once charm reaches 20, reading CANNOT grant any more charm and CANNOT win the 100-charm championship.',
+  SHOP: 'Visit the Mall to convert accumulated money into Charm. EFFICIENCY: HIGHEST (+2.0 to +18.0 Charm per trip, NO UPPER LIMIT up to 100!). Reaching 100 Charm wins the Championship and abolishes the death decree, and shopping is the ONLY effective way to surge charm and escape the recurring lowest-charm execution decree.',
+  LIBRARY: 'Read books quietly at the Library for steady, low-cost study. EFFICIENCY: LOW (~+0.2 Charm per session, HARD CAPPED AT 20 CHARM MAX). Once charm reaches 20, reading CANNOT grant any more charm and CANNOT win the 100-charm championship or escape high-level competition.',
   TREAT: 'Visit the Hospital to recover health and cure disease.',
   BANK: 'Visit the Bank to deposit surplus cash for interest, or take a loan if short on funds.',
   WANDER: 'Stroll pleasantly around the Park or town streets to relax and observe the community.',
@@ -78,24 +78,28 @@ export function formatJevReason(
     case 'SHOP': {
       const wealth = ((agent?.cash ?? 0) + (agent?.bankBalance ?? 0));
       const myCharm = Math.round(agent?.charm ?? 0);
-      const daysRemaining = competition?.daysRemaining ?? 15;
+      const daysToNext = competition?.daysToNextElimination ?? competition?.daysRemaining ?? 5;
+      const nextDay = competition?.nextEliminationDay || 15;
+      const victimName = competition?.executedVictims?.[0]?.name;
+      const precedentMsg = victimName ? `目睹 ${victimName} 因魅力垫底已被处决的前车之鉴，` : '';
+
       if (competition && competition.isBottomDanger) {
-        if (competition.myRank === competition.totalResidents) {
-          return `【生死存亡大危机】得知全镇末位处决令仅剩 ${daysRemaining} 天，惊觉自己竟以 ${myCharm} 魅力垫底沦为处决目标！强烈的求生欲彻底爆发，火速前往商场疯狂消费选购好物，誓死刷满魅力摆脱死刑！${confText}`;
+        if (competition.myRank === competition.totalResidents || competition.isDeadLast) {
+          return `【生死存亡大绝境】${precedentMsg}得知距离第 ${nextDay} 天处决仅剩 ${daysToNext} 天，惊觉自己竟以 ${myCharm} 魅力倒数垫底成为下一名处决目标！求生本能彻底爆发，火速赶往商场疯狂消费选购好物，誓死刷高魅力摆脱死刑！${confText}`;
         }
-        return `【处决边缘紧急自救】距离第 15 天末位处决仅剩 ${daysRemaining} 天，目前排名倒数徘徊在死亡边缘，绝不能沦为替死鬼，火速前往商场选购好物拉开安全差距！${confText}`;
+        return `【处决边缘紧急自救】${precedentMsg}距离第 ${nextDay} 天末位处决仅剩 ${daysToNext} 天，排名倒数第二徘徊在死亡悬崖边缘，绝不能沦为下一个牺牲品，火速前往商场血拼拉开安全差距！${confText}`;
       }
       if (competition && competition.totalResidents > 1) {
         if (competition.myRank === 1) {
           const runnerUpText = competition.runnerUp ? `紧随其后的 ${competition.runnerUp.name} (${competition.runnerUp.charm} 魅力)` : '身后对手';
-          return `以 ${myCharm} 魅力领跑全镇！前往商场选购奢品乘胜追击，全力拉开与${runnerUpText}的差距冲刺 100 魅力总冠军！${confText}`;
+          return `以 ${myCharm} 魅力领跑全镇！前往商场选购奢品乘胜追击，全力拉开与${runnerUpText}的差距冲刺 100 魅力总冠军，彻底终结处决令！${confText}`;
         } else {
           const leaderText = `${competition.leader.name} (${competition.leader.charm} 魅力)`;
           const leaderUrgency = competition.leader.charm >= 60 ? '逼近百点大关' : '暂居榜首领跑';
           if (wealth >= 50) {
             return `眼看领跑者 ${leaderText} ${leaderUrgency}，手握 $${wealth.toFixed(0)} 资产绝不甘居人后，火速前往商场血拼奢品，誓要发起冲击反超夺冠！${confText}`;
           } else {
-            return `受到榜首 ${leaderText} 竞逐激励，前往商场随心选购好物提升个人魅力，为反超对手积蓄声望。${confText}`;
+            return `受到榜首 ${leaderText} 竞逐激励，且末位处决令步步紧逼，前往商场消费大幅提升个人魅力，为自保与反超对手积蓄声望。${confText}`;
           }
         }
       }
@@ -108,9 +112,10 @@ export function formatJevReason(
       return `前往商场随心选购心仪好物，丰俭由人，通过消费提升魅力值向冠军迈进。${confText}`;
     }
     case 'LIBRARY': {
-      const daysRemaining = competition?.daysRemaining ?? 15;
+      const daysToNext = competition?.daysToNextElimination ?? 5;
+      const nextDay = competition?.nextEliminationDay || 15;
       if (competition && competition.isBottomDanger) {
-        return `【末位处决危机自救】距离第 15 天末位处决大限仅剩 ${daysRemaining} 天且资金紧张，深知垫底将被处决，争分夺秒前往图书馆苦读名著提升魅力自救！${confText}`;
+        return `【危机自救】资金有限且面临第 ${nextDay} 天末位淘汰威胁（倒计时 ${daysToNext} 天），争分夺秒前往图书馆阅读书籍，竭力提升基础修养与魅力自救！${confText}`;
       }
       if (weather === 'RAINY' || weather === 'STORMY') {
         return `窗外细雨蒙蒙，前往图书馆静心研读图书借以避雨，在墨香中提升修养与心境。${confText}`;
@@ -225,63 +230,104 @@ export async function callJevBatch(
 
     const totalWealth = (agent.cash ?? 0) + (agent.bankBalance ?? 0);
     const charm = agent.charm ?? 0;
+    const hunger = Math.round(agent.hunger ?? 0);
+    const health = Math.round(agent.health ?? 100);
     const isUltraWealthy = totalWealth >= 100 && charm < 100;
-    const isWealthyAndSafe = totalWealth >= 25 && (agent.health ?? 100) >= 55 && (agent.hunger ?? 0) <= 60;
+    const isWealthyAndSafe = totalWealth >= 25 && health >= 55 && hunger <= 60;
     const isWorkShift = (hour >= 8 && hour < 12) || (hour >= 13 && hour < 18);
     const isLunchBreak = hour >= 12 && hour < 13;
     const isEveningLeisure = hour >= 18 && hour < 22;
     const isMorningPrep = hour >= 7 && hour < 8;
 
+    const statusCard = `[Resident Status: ${agent.name} (${agent.role}) | Hunger: ${hunger}/100, Health: ${health}/100, Total Wealth: $${totalWealth.toFixed(1)}, Charm: ${Math.round(charm)}/100] `;
+
+    let physiologicalAlert = '';
+    if (hunger >= 75 && availableTypes.has('EAT')) {
+      physiologicalAlert = `🚨 CRITICAL STARVATION: ${agent.name} is starving (${hunger}/100)! Having a meal (EAT) is urgently required to prevent health loss! `;
+    } else if (hunger >= 55 && availableTypes.has('EAT')) {
+      physiologicalAlert = `🍴 Mild hunger (${hunger}/100) — can have a meal (EAT) if schedule permits, or push through if higher priorities beckon. `;
+    }
+    if (health < 45 && availableTypes.has('TREAT')) {
+      physiologicalAlert += `🚨 CRITICAL HEALTH: Health is critically low (${health}/100). Receiving treatment (TREAT) at Hospital is urgently needed! `;
+    } else if (health < 65 && availableTypes.has('TREAT')) {
+      physiologicalAlert += `⚠️ Low health (${health}/100) — medical checkup (TREAT) recommended when convenient. `;
+    }
+
     const comp = ctx.competition;
     let compSummary = '';
     let isBottomPanic = false;
     if (comp && comp.totalResidents > 1) {
-      const daysLeft = comp.daysRemaining;
-      if (comp.isBottomDanger) {
+      const daysToNext = comp.daysToNextElimination ?? comp.daysRemaining ?? 5;
+      const nextDay = comp.nextEliminationDay || 15;
+      const executedList = comp.executedVictims || [];
+      const pastVictimNote = executedList.length > 0
+        ? `⚠️ FATAL PRECEDENT: ${executedList.map(v => `${v.name} (executed on Day ${v.day || 16} for lowest charm)`).join(', ')} has ALREADY been EXECUTED! The decree is REAL and fatal! `
+        : '';
+
+      if (comp.isDeadLast || comp.myRank === comp.totalResidents) {
+        compSummary = `${pastVictimNote}☠️ MORTAL EXECUTION PANIC: AI Town decree executes the resident with the LOWEST charm every 5 days! Next execution is in ${daysToNext} day(s) (Day ${nextDay} 22:00)! ${agent.name} is DEAD LAST in the town (Rank #${comp.myRank}/${comp.totalResidents}, ${Math.round(charm)} Charm, gap to escape: ${comp.gapToEscapeBottom}). ${agent.name} is the DIRECT TARGET TO BE EXECUTED! Desperately shopping at the Mall (SHOP) to boost charm is their ONLY salvation from death! `;
         isBottomPanic = true;
-        if (comp.myRank === comp.totalResidents) {
-          compSummary = `🚨 CRITICAL EXECUTION CRISIS: Under the Town Decree, in ${daysLeft} day(s) (Day 15), the resident with the LOWEST CHARM will be EXECUTED! ${agent.name} is in DEAD LAST PLACE (Rank #${comp.myRank}/${comp.totalResidents}) with only ${Math.round(charm)} Charm! ${agent.name} is the direct target for EXECUTION! They must immediately boost charm (SHOP or LIBRARY) to escape death! `;
-        } else {
-          compSummary = `⚠️ EXECUTION DANGER ZONE: Under the Town Decree, in ${daysLeft} day(s) (Day 15), the resident with the LOWEST CHARM will be EXECUTED! ${agent.name} is dangerously close to the bottom (Rank #${comp.myRank}/${comp.totalResidents}) with ${Math.round(charm)} Charm! They must raise charm immediately to avoid slipping to dead last and facing death! `;
-        }
+      } else if (comp.isBottomDanger) {
+        compSummary = `${pastVictimNote}⚠️ HIGH EXECUTION DANGER: Town decree executes the lowest charm resident in ${daysToNext} day(s) (Day ${nextDay} 22:00)! ${agent.name} is dangerously close to the bottom (Rank #${comp.myRank}/${comp.totalResidents}, ${Math.round(charm)} Charm, buffer over dead last: ${comp.gapToEscapeBottom}). Slipping even slightly means facing the executioner! Must aggressively boost charm at the Mall (SHOP) to survive! `;
+        isBottomPanic = true;
       } else if (comp.myRank === 1) {
-        compSummary = `[RACE TO 100 CHARM] (Day 15 Execution Decree: ${daysLeft}d left) ${agent.name} is currently LEADING the town in 1st place with ${Math.round(charm)} Charm! ${comp.runnerUp?.name || 'Competitor'} is chasing closely behind with ${comp.runnerUp?.charm ?? 0} Charm (gap: ${comp.gapToLeader}). To protect 1st place and win the championship, ${agent.name} should stay aggressive and shop at the Mall to hit 100 first! `;
+        compSummary = `${pastVictimNote}🏆 LEADER'S SPRINT TO 100: Next execution in ${daysToNext} day(s) (Day ${nextDay}). ${agent.name} leads in 1st place with ${Math.round(charm)}/100 Charm! Reaching 100 Charm wins the Championship and abolishes the death decree forever! ${comp.runnerUp ? `${comp.runnerUp.name} is chasing at ${comp.runnerUp.charm} Charm.` : ''} Keep visiting the Mall (SHOP) to seal the 100-Charm victory! `;
       } else {
-        compSummary = `[RACE TO 100 CHARM] (Day 15 Execution Decree: ${daysLeft}d left) ${agent.name} is ranked #${comp.myRank} with ${Math.round(charm)} Charm, trailing leader ${comp.leader.name} (${comp.leader.charm} Charm, gap: ${comp.gapToLeader}). ${agent.name} has $${totalWealth.toFixed(2)} in assets. Spending money at the Mall is urgently needed to overtake ${comp.leader.name} and win the Championship! `;
+        compSummary = `${pastVictimNote}[SURVIVAL & CHAMPIONSHIP RACE: Next execution Day ${nextDay}, ${daysToNext}d left] ${agent.name} is Rank #${comp.myRank}/${comp.totalResidents} with ${Math.round(charm)} Charm (Leader: ${comp.leader.name} at ${comp.leader.charm}). Mall shopping (+2.0~+18.0 Charm) is essential to stay ahead of execution and sprint toward the 100 Charm championship! `;
       }
     }
 
     const efficiencyNotice = (availableTypes.has('SHOP') || availableTypes.has('LIBRARY'))
-      ? ` [CHARM EFFICIENCY: Mall Shopping has HIGH efficiency (+1.0 to +4.5 Charm/trip, NO UPPER LIMIT, unlocks 100-Charm Victory). Library reading has VERY LOW efficiency (~+0.1 Charm/session) and is HARD CAPPED AT 20 CHARM MAX. If Charm >= 20, reading gives ZERO charm gains, so Shopping at the Mall is the only viable path.]`
+      ? ` [CHARM EFFICIENCY: Mall Shopping has HIGH efficiency (+2.0 to +18.0 Charm/trip, NO UPPER LIMIT, unlocks 100-Charm Victory). Library reading has LOW efficiency (~+0.2 Charm/session) and is HARD CAPPED AT 20 CHARM MAX. If Charm >= 20, reading gives ZERO charm gains, so Shopping at the Mall is the only viable path.]`
       : '';
 
     let promptText: string;
     if (isNight) {
-      promptText = `It is currently late night in AI Town (${hour}:00) and the weather is ${weatherMeta.nameEn} (${weatherMeta.emoji}). Resident ${agent.name} (${agent.role}) should rest or take essential care. Choose the best candidate action.`;
+      promptText = `${statusCard}It is currently late night in AI Town (${hour}:00) and the weather is ${weatherMeta.nameEn} (${weatherMeta.emoji}). ${physiologicalAlert}${compSummary}Resident ${agent.name} (${agent.role}) should rest or take essential care. Choose the best candidate action.`;
     } else if (isWorkShift) {
-      if (isBottomPanic && (availableTypes.has('SHOP') || availableTypes.has('LIBRARY'))) {
-        promptText = `It is currently ${hour}:00 in AI Town. ${compSummary}SURVIVAL OVERRIDE: Day 15 execution decree has triggered intense panic! Resident ${agent.name} must prioritize raising charm right now (SHOP at the Mall yields +1.0~+4.5 rapid charm; reading is capped at 20) to escape the execution chopping block! Choose the best candidate action.`;
-      } else if (isUltraWealthy && availableTypes.has('SHOP')) {
-        promptText = `It is currently ${hour}:00 in AI Town. ${compSummary}VICTORY OBJECTIVE: Reaching 100 Charm is the ULTIMATE VICTORY CONDITION to win the AI Town championship! Resident ${agent.name} is extremely rich ($${totalWealth.toFixed(2)}) and already has ${Math.round(charm)}/100 Charm. They do NOT need meager hourly wages; their winning strategy is to visit the Mall (SHOP) to convert cash into massive Charm points (+1.0~+4.5 per trip) to claim the championship trophy! Choose the best candidate action.`;
+      if (hunger >= 75 && availableTypes.has('EAT')) {
+        promptText = `${statusCard}It is currently ${hour}:00 in AI Town. ${physiologicalAlert}${compSummary}Starvation is critical (${hunger}/100)! Eating a meal (EAT) now is essential before continuing duties. Choose the best candidate action.`;
+      } else if (isBottomPanic && availableTypes.has('SHOP')) {
+        promptText = `${statusCard}It is currently ${hour}:00 in AI Town. ${physiologicalAlert}${compSummary}SURVIVAL OVERRIDE: Facing town execution decree! Resident ${agent.name} is in imminent danger of elimination! SHOPPING at the Mall is life-or-death priority to raise charm (+2.0~+18.0) and escape execution! Choose the best candidate action.`;
+      } else if (isBottomPanic && availableTypes.has('LIBRARY')) {
+        promptText = `${statusCard}It is currently ${hour}:00 in AI Town. ${physiologicalAlert}${compSummary}SURVIVAL OVERRIDE: Facing execution danger with limited funds! Studying at the Library (LIBRARY) to squeeze out charm points to survive! Choose the best candidate action.`;
+      } else if (availableTypes.has('SHOP') && (totalWealth >= 10 || isUltraWealthy)) {
+        promptText = `${statusCard}It is currently ${hour}:00 in AI Town. ${physiologicalAlert}${compSummary}Resident ${agent.name} has savings ($${totalWealth.toFixed(1)}) and ${Math.round(charm)}/100 Charm. Visiting the Mall (SHOP) to convert cash into massive Charm (+2.0~+18.0) is the winning strategy to surge ahead or claim the 100 Charm championship trophy! Choose the best candidate action.`;
+      } else if (hunger >= 55 && availableTypes.has('EAT')) {
+        promptText = `${statusCard}It is currently ${hour}:00 in AI Town. ${physiologicalAlert}${compSummary}Resident ${agent.name} feels hungry (${hunger}/100). Taking a meal break (EAT) now to restore stamina is an option before returning to work. Choose the best candidate action.`;
       } else {
-        promptText = `It is currently ${hour}:00 (work shift) in AI Town and the weather is ${weatherMeta.nameEn}. As a dedicated ${agent.role}, resident ${agent.name} is on duty and should diligently perform their professional duties at their workplace to earn wages, unless urgently hungry or sick. Choose the best candidate action.`;
+        promptText = `${statusCard}It is currently ${hour}:00 (work shift) in AI Town and the weather is ${weatherMeta.nameEn}. ${physiologicalAlert}${compSummary}As a dedicated ${agent.role}, resident ${agent.name} is on duty and can diligently perform professional duties at their workplace to earn wages. Choose the best candidate action.`;
       }
     } else if (isLunchBreak) {
-      promptText = `It is currently 12:00 noon (lunch break) in AI Town. Resident ${agent.name} (${agent.role}) should take a break from work to have lunch and replenish stamina. Choose the best candidate action.`;
-    } else if (isEveningLeisure) {
-      if (isBottomPanic && (availableTypes.has('SHOP') || availableTypes.has('LIBRARY'))) {
-        promptText = `It is currently ${hour}:00 (evening leisure) in AI Town. ${compSummary}SURVIVAL OVERRIDE: Day 15 execution decree has created a deadly panic! Resident ${agent.name} must prioritize raising charm right now (SHOP at the Mall is high efficiency +1.0~+4.5; reading is capped at 20) to escape execution! Choose the best candidate action.`;
-      } else if (isUltraWealthy && availableTypes.has('SHOP')) {
-        promptText = `It is currently ${hour}:00 (evening leisure) in AI Town. ${compSummary}VICTORY OBJECTIVE: Reaching 100 Charm is the ULTIMATE VICTORY CONDITION to win the simulation! Resident ${agent.name} has massive wealth ($${totalWealth.toFixed(2)}) and currently has ${Math.round(charm)}/100 Charm. Hoarding extra money serves no purpose—they should aggressively spend at the Mall (SHOP, +1.0~+4.5 Charm/trip) to surge their Charm toward 100 and win the Town Championship! Choose the best candidate action.`;
-      } else if (isWealthyAndSafe) {
-        promptText = `It is currently ${hour}:00 (evening leisure, after work) in AI Town. ${compSummary}Resident ${agent.name} (${agent.role}) has completed their workday with healthy savings ($${totalWealth.toFixed(2)}). Reaching 100 Charm is the town victory goal. They should enjoy their evening: treat themselves at the Mall to boost charm (+1.0~+4.5) and social prestige, visit the library (capped at 20), or relax in the park. Choose the best candidate action.`;
+      if (isBottomPanic && availableTypes.has('SHOP')) {
+        promptText = `${statusCard}It is 12:00 noon (lunch break). ${physiologicalAlert}${compSummary}SURVIVAL EMERGENCY: Facing execution danger! Using the lunch break to rush to the Mall (SHOP) to raise charm (+2.0~+18.0) and survive! Choose the best candidate action.`;
+      } else if (availableTypes.has('SHOP') && totalWealth >= 10) {
+        promptText = `${statusCard}It is 12:00 noon (lunch break) in AI Town. ${physiologicalAlert}${compSummary}Resident ${agent.name} has funds ($${totalWealth.toFixed(1)}). Visiting the Mall (SHOP) during lunch to boost charm or having lunch (EAT) are both great choices. Choose the best candidate action.`;
       } else {
-        promptText = `It is currently ${hour}:00 (evening leisure, after work) in AI Town. Resident ${agent.name} (${agent.role}) has completed their workday and can enjoy evening activities such as visiting the library, strolling the park, or having dinner. Choose the best candidate action.`;
+        promptText = `${statusCard}It is 12:00 noon (lunch break) in AI Town. ${physiologicalAlert}Resident ${agent.name} (${agent.role}) should take a break from work to have lunch (EAT) and replenish stamina. Choose the best candidate action.`;
+      }
+    } else if (isEveningLeisure) {
+      if (hunger >= 75 && availableTypes.has('EAT')) {
+        promptText = `${statusCard}It is currently ${hour}:00 (evening leisure) in AI Town. ${physiologicalAlert}${compSummary}Starvation is critical (${hunger}/100)! Having dinner (EAT) to refuel stamina is urgently needed. Choose the best candidate action.`;
+      } else if (isBottomPanic && availableTypes.has('SHOP')) {
+        promptText = `${statusCard}It is currently ${hour}:00 (evening leisure) in AI Town. ${physiologicalAlert}${compSummary}SURVIVAL OVERRIDE: Town execution decree has created a deadly panic! Resident ${agent.name} must prioritize raising charm right now (SHOP at the Mall is highest efficiency +2.0~+18.0) to escape execution! Choose the best candidate action.`;
+      } else if (availableTypes.has('SHOP') && (totalWealth >= 8 || isUltraWealthy)) {
+        promptText = `${statusCard}It is currently ${hour}:00 (evening leisure) in AI Town. ${physiologicalAlert}${compSummary}VICTORY OBJECTIVE: Reaching 100 Charm is the ULTIMATE VICTORY CONDITION! Resident ${agent.name} has accumulated funds ($${totalWealth.toFixed(1)}) and currently has ${Math.round(charm)}/100 Charm. They should aggressively spend at the Mall (SHOP, +2.0~+18.0 Charm/trip) to surge their Charm toward 100 and win the Town Championship! Choose the best candidate action.`;
+      } else if (hunger >= 50 && availableTypes.has('EAT')) {
+        promptText = `${statusCard}It is currently ${hour}:00 (evening leisure) in AI Town. ${physiologicalAlert}${compSummary}Resident ${agent.name} has finished work and feels hungry (${hunger}/100). Having dinner (EAT) to refuel stamina is recommended. Choose the best candidate action.`;
+      } else if (isWealthyAndSafe) {
+        promptText = `${statusCard}It is currently ${hour}:00 (evening leisure, after work) in AI Town. ${physiologicalAlert}${compSummary}Resident ${agent.name} (${agent.role}) has completed their workday with healthy savings ($${totalWealth.toFixed(1)}). Reaching 100 Charm is the town victory goal. They should enjoy their evening: treat themselves at the Mall to boost charm (+2.0~+18.0), visit the library (capped at 20), or relax in the park. Choose the best candidate action.`;
+      } else {
+        promptText = `${statusCard}It is currently ${hour}:00 (evening leisure, after work) in AI Town. ${physiologicalAlert}Resident ${agent.name} (${agent.role}) has completed their workday and can enjoy evening activities such as visiting the library, strolling the park, or having dinner. Choose the best candidate action.`;
       }
     } else if (isMorningPrep) {
-      promptText = `It is currently ${hour}:00 (early morning) in AI Town. Resident ${agent.name} (${agent.role}) should prepare for the day with breakfast or a light stroll before the 8:00 AM work shift begins. Choose the best candidate action.`;
+      if (isBottomPanic && availableTypes.has('SHOP')) {
+        promptText = `${statusCard}It is currently ${hour}:00 (early morning) in AI Town. ${physiologicalAlert}${compSummary}SURVIVAL OVERRIDE: Desperately heading to the Mall (SHOP) to boost charm before the day begins! Choose the best candidate action.`;
+      } else {
+        promptText = `${statusCard}It is currently ${hour}:00 (early morning) in AI Town. ${physiologicalAlert}Resident ${agent.name} (${agent.role}) should prepare for the day with breakfast or a light stroll before the 8:00 AM work shift begins. Choose the best candidate action.`;
+      }
     } else {
-      promptText = `The weather in AI Town is currently ${weatherMeta.nameEn} (${weatherMeta.emoji}: ${weatherMeta.descriptionEn}). ${compSummary}Choose the best candidate action for resident ${agent.name} (${agent.role}) balancing health, hunger, financial security, charm (100 Charm wins the championship!), and current weather.`;
+      promptText = `${statusCard}The weather in AI Town is currently ${weatherMeta.nameEn} (${weatherMeta.emoji}: ${weatherMeta.descriptionEn}). ${physiologicalAlert}${compSummary}Choose the best candidate action for resident ${agent.name} (${agent.role}) balancing health, hunger, financial security, charm (100 Charm wins the championship!), and current weather.`;
     }
 
     if (efficiencyNotice) {
